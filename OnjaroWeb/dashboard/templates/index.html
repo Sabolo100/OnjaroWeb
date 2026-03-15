@@ -11,7 +11,7 @@
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <h1 class="logo">⚡ Onjaro Evolution</h1>
+                <h1 class="logo">&#9889; Onjaro Evolution</h1>
                 <span class="subtitle">Autonomous Web App Development System</span>
             </div>
             <div class="header-right">
@@ -26,88 +26,176 @@
             </div>
         </header>
 
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="evolution" onclick="switchTab('evolution')">
+                &#9881; Evolution
+            </button>
+            <button class="tab-btn" data-tab="research" onclick="switchTab('research')">
+                &#128269; Research
+                <span class="review-badge" id="review-badge" style="display:none">0</span>
+            </button>
+        </nav>
+
         <!-- Countdown Banner -->
         <div class="countdown-banner" id="countdown-banner">
-            <div class="countdown-label">Következő futás:</div>
+            <div class="countdown-label">Kovetkezo futas:</div>
             <div class="countdown-timer" id="countdown">--:--:--</div>
-            <div class="countdown-info" id="countdown-info">Várakozás...</div>
+            <div class="countdown-info" id="countdown-info">Varakozas...</div>
         </div>
 
-        <!-- Main Grid -->
-        <div class="grid">
-            <!-- Current Run Panel -->
-            <section class="panel current-run">
-                <h2>Current Run</h2>
-                <div id="current-run-content">
-                    <div class="empty-state">No active run</div>
-                </div>
-            </section>
+        <!-- ═══════════════════════════════════ -->
+        <!-- EVOLUTION TAB -->
+        <!-- ═══════════════════════════════════ -->
+        <div class="tab-content active" id="tab-evolution">
+            <div class="grid">
+                <!-- Current Run Panel -->
+                <section class="panel current-run">
+                    <h2>Current Run</h2>
+                    <div id="current-run-content">
+                        <div class="empty-state">No active run</div>
+                    </div>
+                </section>
 
-            <!-- Live Timeline -->
-            <section class="panel timeline">
-                <h2>Live Timeline</h2>
-                <div class="timeline-container" id="timeline">
-                    <div class="empty-state">Waiting for events...</div>
-                </div>
-            </section>
+                <!-- Live Timeline -->
+                <section class="panel timeline">
+                    <h2>Live Timeline</h2>
+                    <div class="timeline-container" id="timeline">
+                        <div class="empty-state">Waiting for events...</div>
+                    </div>
+                </section>
 
-            <!-- Current Stage -->
-            <section class="panel stage">
-                <h2>Current Stage</h2>
-                <div id="current-stage">
-                    <div class="phase-badge idle">IDLE</div>
-                    <div class="agent-name" id="active-agent">-</div>
-                    <div class="stage-message" id="stage-message">System ready</div>
-                </div>
-            </section>
+                <!-- Current Stage -->
+                <section class="panel stage">
+                    <h2>Current Stage</h2>
+                    <div id="current-stage">
+                        <div class="phase-badge idle">IDLE</div>
+                        <div class="agent-name" id="active-agent">-</div>
+                        <div class="stage-message" id="stage-message">System ready</div>
+                    </div>
+                </section>
 
-            <!-- Decision Card -->
-            <section class="panel decision">
-                <h2>Last Decision</h2>
-                <div id="decision-card">
-                    <div class="empty-state">No decisions yet</div>
-                </div>
-            </section>
+                <!-- Decision Card -->
+                <section class="panel decision">
+                    <h2>Last Decision</h2>
+                    <div id="decision-card">
+                        <div class="empty-state">No decisions yet</div>
+                    </div>
+                </section>
 
-            <!-- Tests Panel -->
-            <section class="panel tests">
-                <h2>Tests</h2>
-                <div id="tests-content">
-                    <div class="empty-state">No test results</div>
-                </div>
-            </section>
+                <!-- Tests Panel -->
+                <section class="panel tests">
+                    <h2>Tests</h2>
+                    <div id="tests-content">
+                        <div class="empty-state">No test results</div>
+                    </div>
+                </section>
 
-            <!-- All Ideas (chosen + rejected) -->
-            <section class="panel ideas">
-                <h2>Last Run Ideas</h2>
-                <div id="ideas-content">
-                    <div class="empty-state">No ideas yet</div>
-                </div>
-            </section>
+                <!-- All Ideas (chosen + rejected) -->
+                <section class="panel ideas">
+                    <h2>Last Run Ideas</h2>
+                    <div id="ideas-content">
+                        <div class="empty-state">No ideas yet</div>
+                    </div>
+                </section>
 
-            <!-- Recent Runs -->
-            <section class="panel runs-list">
-                <h2>Recent Runs</h2>
-                <div id="runs-list-content">
-                    <div class="empty-state">Loading...</div>
-                </div>
-            </section>
+                <!-- Recent Runs -->
+                <section class="panel runs-list">
+                    <h2>Recent Runs</h2>
+                    <div id="runs-list-content">
+                        <div class="empty-state">Loading...</div>
+                    </div>
+                </section>
 
-            <!-- Live Features -->
-            <section class="panel features">
-                <h2>Live Features</h2>
-                <div id="features-content">
-                    <div class="empty-state">Loading...</div>
-                </div>
-            </section>
+                <!-- Live Features -->
+                <section class="panel features">
+                    <h2>Live Features</h2>
+                    <div id="features-content">
+                        <div class="empty-state">Loading...</div>
+                    </div>
+                </section>
 
-            <!-- Recent Failures -->
-            <section class="panel failures">
-                <h2>Recent Failures</h2>
-                <div id="failures-content">
-                    <div class="empty-state">No failures</div>
-                </div>
-            </section>
+                <!-- Recent Failures -->
+                <section class="panel failures">
+                    <h2>Recent Failures</h2>
+                    <div id="failures-content">
+                        <div class="empty-state">No failures</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════ -->
+        <!-- RESEARCH TAB -->
+        <!-- ═══════════════════════════════════ -->
+        <div class="tab-content" id="tab-research">
+            <div class="grid">
+                <!-- Current Research Run -->
+                <section class="panel current-run">
+                    <h2>Current Research Run</h2>
+                    <div id="research-run-content">
+                        <div class="empty-state">No active research run</div>
+                    </div>
+                </section>
+
+                <!-- Research Timeline -->
+                <section class="panel timeline">
+                    <h2>Research Timeline</h2>
+                    <div class="timeline-container" id="research-timeline">
+                        <div class="empty-state">Waiting for research events...</div>
+                    </div>
+                </section>
+
+                <!-- Research Stage -->
+                <section class="panel stage">
+                    <h2>Research Stage</h2>
+                    <div id="research-stage">
+                        <div class="phase-badge idle">IDLE</div>
+                        <div class="agent-name" id="research-active-agent">-</div>
+                        <div class="stage-message" id="research-stage-message">Research ready</div>
+                    </div>
+                </section>
+
+                <!-- Research Stats -->
+                <section class="panel decision">
+                    <h2>Last Run Stats</h2>
+                    <div id="research-stats">
+                        <div class="empty-state">No research data yet</div>
+                    </div>
+                </section>
+
+                <!-- Review Queue -->
+                <section class="panel tests">
+                    <h2>Review Queue</h2>
+                    <div id="review-queue-content">
+                        <div class="empty-state">No items pending review</div>
+                    </div>
+                </section>
+
+                <!-- Source Health -->
+                <section class="panel ideas">
+                    <h2>Source Health</h2>
+                    <div id="source-health-content">
+                        <div class="empty-state">No sources registered</div>
+                    </div>
+                </section>
+
+                <!-- Recent Research Runs -->
+                <section class="panel runs-list">
+                    <h2>Recent Research Runs</h2>
+                    <div id="research-runs-list">
+                        <div class="empty-state">Loading...</div>
+                    </div>
+                </section>
+
+                <!-- Research Findings -->
+                <section class="panel features">
+                    <h2>Recent Findings</h2>
+                    <div id="research-findings-content">
+                        <div class="empty-state">No findings yet</div>
+                    </div>
+                </section>
+            </div>
         </div>
     </div>
 

@@ -553,6 +553,121 @@ body {
     background: var(--text-muted);
 }
 
+/* Tab Navigation */
+.tab-nav {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 16px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.tab-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.tab-btn.active {
+    background: var(--bg-panel);
+    color: var(--accent-cyan);
+    border: 1px solid var(--border);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Review badge on tab */
+.review-badge {
+    display: inline-block;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--accent-red);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 18px;
+    margin-left: 6px;
+}
+
+/* Review actions */
+.review-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.btn-approve, .btn-reject {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-approve {
+    background: #1a2d1a;
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+}
+
+.btn-approve:hover {
+    background: #2a3d2a;
+}
+
+.btn-reject {
+    background: #2d1a1a;
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+}
+
+.btn-reject:hover {
+    background: #3d2a2a;
+}
+
+.review-reason {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Research-specific phase badges */
+.phase-badge.queued { background: var(--bg-hover); color: var(--text-muted); }
+.phase-badge.planning { background: #1a2332; color: var(--accent-blue); }
+.phase-badge.fetching { background: #2a1f33; color: var(--accent-purple); }
+.phase-badge.extracting { background: #2d2a1a; color: var(--accent-yellow); }
+.phase-badge.validating { background: #2d2a1a; color: var(--accent-yellow); }
+.phase-badge.normalizing { background: #1a2332; color: var(--accent-cyan); }
+.phase-badge.deduping { background: #1a2332; color: var(--accent-cyan); }
+.phase-badge.persisting { background: #1a2d1a; color: var(--accent-green); }
+.phase-badge.completed { background: #1a2d1a; color: var(--accent-green); }
+.phase-badge.partial_success { background: #2d2a1a; color: var(--accent-yellow); }
+.phase-badge.retry_wait { background: #2d2a1a; color: var(--accent-yellow); }
+.phase-badge.cancelled { background: var(--bg-hover); color: var(--text-muted); }
+
 /* Responsive */
 @media (max-width: 1200px) {
     .grid {

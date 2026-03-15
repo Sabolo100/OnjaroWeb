@@ -1,0 +1,33 @@
+# Webapp is a separate git repo - exclude from orchestrator repo
+webapp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Runtime data
+data/onjaro.db
+data/.orchestrator.lock
+artifacts/
+logs/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Env
+.env
+.env.local

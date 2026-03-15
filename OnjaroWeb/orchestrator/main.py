@@ -24,6 +24,10 @@ from orchestrator.git_manager import GitManager
 from orchestrator.run_manager import RunManager
 from db.connection import init_db
 from db.repository import Repository
+from db.research_repository import ResearchRepository
+from research.run_manager import ResearchRunManager
+from research.lock import ResearchLock
+from research.config import RESEARCH_RUN_INTERVAL_MINUTES
 
 # Setup logging
 os.makedirs(LOGS_DIR, exist_ok=True)
@@ -45,6 +49,53 @@ executor = ClaudeExecutor()
 git_manager = GitManager()
 run_manager = RunManager(executor, repo, event_bus, git_manager)
 dashboard_socketio = None
+
+# Research components
+research_repo = ResearchRepository()
+research_manager = ResearchRunManager(research_repo, event_bus)
+
+
+def _init_research_pipeline():
+    """Initialize research pipeline components and wire them to the run manager."""
+    try:
+        from research.config_loader import ProjectConfig
+        from research.pipeline.fetcher import ResearchFetcher
+        from research.pipeline.extractor import ResearchExtractor
+        from research.pipeline.validator import ResearchValidator
+        from research.pipeline.normalizer import ContentNormalizer
+        from research.pipeline.deduplicator import ResearchDeduplicator
+        from research.pipeline.persister import ResearchPersister
+
+        config = ProjectConfig()
+        if not config.is_configured():
+            logger.warning("Research config not found at %s, research will be inactive",
+                           config.config_dir)
+            return
+
+        research_manager.set_config_loader(config)
+        research_manager.set_pipeline_components(
+            fetcher=ResearchFetcher(research_repo, config),
+            extractor=ResearchExtractor(research_repo, config),
+            validator=ResearchValidator(research_repo, config),
+            normalizer=ContentNormalizer(config),
+            deduplicator=ResearchDeduplicator(research_repo, config),
+            persister=ResearchPersister(research_repo, config),
+        )
+
+        # Register seed sources
+        sources = config.load_sources()
+        for source in sources:
+            research_repo.upsert_source(
+                domain=source.url,
+                trust_score=source.trust_score,
+                language=source.language,
+                source_type=source.source_type,
+            )
+
+        logger.info("Research pipeline initialized with %d seed sources", len(sources))
+
+    except Exception as e:
+        logger.error("Failed to initialize research pipeline: %s", e)
 
 
 def db_event_logger(event: dict):
@@ -118,12 +169,38 @@ def run_cycle():
         update_next_run_time()
 
 
+def research_cycle():
+    """Execute a single research cycle with lock protection."""
+    lock = ResearchLock()
+    if not lock.acquire():
+        logger.warning("Another research run is in progress, skipping.")
+        return
+
+    try:
+        logger.info("=" * 60)
+        logger.info("Starting research cycle")
+        logger.info("=" * 60)
+
+        run_id = research_manager.execute_research_run()
+        if run_id:
+            run = research_repo.get_research_run(run_id)
+            status = run.get("status", "UNKNOWN") if run else "UNKNOWN"
+            logger.info("Research cycle completed. Run: %s, Status: %s", run_id, status)
+        else:
+            logger.info("Research cycle skipped (budget cap or other reason)")
+
+    except Exception as e:
+        logger.error("Research cycle failed: %s", e)
+    finally:
+        lock.release()
+
+
 def start_dashboard():
     """Start the activity dashboard in a background thread."""
     global dashboard_socketio
     try:
         from dashboard.app import create_app, set_next_run_at
-        app, socketio = create_app(event_bus, repo)
+        app, socketio = create_app(event_bus, repo, research_repo)
         dashboard_socketio = socketio
         event_bus.subscribe(dashboard_event_emitter)
 
@@ -153,6 +230,9 @@ def main():
     init_db()
     logger.info("Database initialized")
 
+    # Initialize research pipeline
+    _init_research_pipeline()
+
     # Subscribe event bus to DB logger
     event_bus.subscribe(db_event_logger)
 
@@ -170,8 +250,16 @@ def main():
         max_instances=1,
         id="evolution_cycle",
     )
+    scheduler.add_job(
+        research_cycle,
+        "interval",
+        minutes=RESEARCH_RUN_INTERVAL_MINUTES,
+        max_instances=1,
+        id="research_cycle",
+    )
     scheduler.start()
-    logger.info("Scheduler started (every %d minutes)", RUN_INTERVAL_MINUTES)
+    logger.info("Scheduler started (evolution: every %d min, research: every %d min)",
+                RUN_INTERVAL_MINUTES, RESEARCH_RUN_INTERVAL_MINUTES)
 
     # Run immediately on start
     logger.info("Running initial cycle...")

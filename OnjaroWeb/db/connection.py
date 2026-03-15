@@ -16,6 +16,14 @@ def _get_schema_sql():
         return f.read()
 
 
+def _get_research_schema_sql():
+    schema_path = os.path.join(os.path.dirname(__file__), "research_schema.sql")
+    if os.path.exists(schema_path):
+        with open(schema_path, "r") as f:
+            return f.read()
+    return ""
+
+
 def get_connection() -> sqlite3.Connection:
     """Get or create a thread-local SQLite connection."""
     if not hasattr(_local, "connection") or _local.connection is None:
@@ -29,9 +37,12 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db():
-    """Initialize the database schema."""
+    """Initialize the database schema (evolution + research)."""
     conn = get_connection()
     conn.executescript(_get_schema_sql())
+    research_sql = _get_research_schema_sql()
+    if research_sql:
+        conn.executescript(research_sql)
     conn.commit()
 
 
