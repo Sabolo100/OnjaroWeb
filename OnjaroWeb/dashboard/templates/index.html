@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onjaro Evolution Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">⚡ Onjaro Evolution</h1>
+                <span class="subtitle">Autonomous Web App Development System</span>
+            </div>
+            <div class="header-right">
+                <div class="status-indicator" id="system-status">
+                    <span class="dot"></span>
+                    <span class="status-text">Idle</span>
+                </div>
+                <div class="clock-block">
+                    <div class="clock-time" id="clock"></div>
+                    <div class="clock-date" id="clock-date"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Countdown Banner -->
+        <div class="countdown-banner" id="countdown-banner">
+            <div class="countdown-label">Következő futás:</div>
+            <div class="countdown-timer" id="countdown">--:--:--</div>
+            <div class="countdown-info" id="countdown-info">Várakozás...</div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid">
+            <!-- Current Run Panel -->
+            <section class="panel current-run">
+                <h2>Current Run</h2>
+                <div id="current-run-content">
+                    <div class="empty-state">No active run</div>
+                </div>
+            </section>
+
+            <!-- Live Timeline -->
+            <section class="panel timeline">
+                <h2>Live Timeline</h2>
+                <div class="timeline-container" id="timeline">
+                    <div class="empty-state">Waiting for events...</div>
+                </div>
+            </section>
+
+            <!-- Current Stage -->
+            <section class="panel stage">
+                <h2>Current Stage</h2>
+                <div id="current-stage">
+                    <div class="phase-badge idle">IDLE</div>
+                    <div class="agent-name" id="active-agent">-</div>
+                    <div class="stage-message" id="stage-message">System ready</div>
+                </div>
+            </section>
+
+            <!-- Decision Card -->
+            <section class="panel decision">
+                <h2>Last Decision</h2>
+                <div id="decision-card">
+                    <div class="empty-state">No decisions yet</div>
+                </div>
+            </section>
+
+            <!-- Tests Panel -->
+            <section class="panel tests">
+                <h2>Tests</h2>
+                <div id="tests-content">
+                    <div class="empty-state">No test results</div>
+                </div>
+            </section>
+
+            <!-- All Ideas (chosen + rejected) -->
+            <section class="panel ideas">
+                <h2>Last Run Ideas</h2>
+                <div id="ideas-content">
+                    <div class="empty-state">No ideas yet</div>
+                </div>
+            </section>
+
+            <!-- Recent Runs -->
+            <section class="panel runs-list">
+                <h2>Recent Runs</h2>
+                <div id="runs-list-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </section>
+
+            <!-- Live Features -->
+            <section class="panel features">
+                <h2>Live Features</h2>
+                <div id="features-content">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </section>
+
+            <!-- Recent Failures -->
+            <section class="panel failures">
+                <h2>Recent Failures</h2>
+                <div id="failures-content">
+                    <div class="empty-state">No failures</div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
