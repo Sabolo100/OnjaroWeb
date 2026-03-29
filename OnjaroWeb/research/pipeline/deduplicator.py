@@ -242,9 +242,19 @@ class ResearchDeduplicator:
         threshold = dedupe_policy.similarity_threshold
         use_company_normalization = (target_table == "companies")
 
+        # Build reverse field mapping: DB column -> extraction field name
+        # e.g. {"name": "title"} so we can find "title" in extraction data
+        # when the DB key is "name"
+        field_mapping = table_config.get("field_mapping", {})
+        reverse_mapping = {}
+        for ext_key, db_col in field_mapping.items():
+            if not db_col.startswith("_"):
+                reverse_mapping[db_col] = ext_key
+
         # Phase 1: Intra-batch dedup
         candidates, intra_skipped = self._intra_batch_dedupe(
-            run_id, candidates, db_keys, threshold, use_company_normalization
+            run_id, candidates, db_keys, threshold, use_company_normalization,
+            reverse_mapping=reverse_mapping,
         )
 
         # Fetch existing records from Supabase
@@ -269,7 +279,9 @@ class ResearchDeduplicator:
         for candidate in candidates:
             action, reason = self._check_candidate(
                 candidate, existing_normalized, threshold,
-                db_keys, use_company_normalization
+                db_keys, use_company_normalization,
+                reverse_mapping=reverse_mapping,
+                target_table=target_table,
             )
 
             if action == "new":
@@ -303,16 +315,25 @@ class ResearchDeduplicator:
                     len(to_persist) + total_skipped)
         return to_persist, total_skipped
 
+    def _get_extraction_value(self, data: dict, db_key: str, reverse_mapping: dict) -> str:
+        """Get value from extraction data, trying DB key first, then mapped extraction key."""
+        val = data.get(db_key, "")
+        if not val and db_key in reverse_mapping:
+            val = data.get(reverse_mapping[db_key], "")
+        return str(val) if val else ""
+
     def _intra_batch_dedupe(
         self, run_id: str,
         candidates: List[ExtractionCandidate],
         db_keys: list, threshold: float,
         use_company_normalization: bool,
+        reverse_mapping: dict = None,
     ) -> Tuple[List[ExtractionCandidate], int]:
         """Remove duplicates within the current batch of candidates."""
         if len(candidates) <= 1:
             return candidates, 0
 
+        reverse_mapping = reverse_mapping or {}
         unique = []
         seen_normalized = []  # list of (candidate, {key: normalized_value})
         skipped = 0
@@ -321,7 +342,7 @@ class ResearchDeduplicator:
             data = candidate.extracted_data
             candidate_norms = {}
             for key in db_keys:
-                raw = str(data.get(key, ""))
+                raw = self._get_extraction_value(data, key, reverse_mapping)
                 if use_company_normalization and key == "name":
                     candidate_norms[key] = normalize_company_name(raw)
                 else:
@@ -374,7 +395,13 @@ class ResearchDeduplicator:
             return []
 
         try:
-            select_fields = ",".join(["id"] + keys)
+            # For people, also fetch current_company_id so dedup can detect
+            # when an existing person is missing company info
+            extra_fields = []
+            if table == "people":
+                extra_fields = ["current_company_id"]
+
+            select_fields = ",".join(["id"] + keys + extra_fields)
             response = client.table(table).select(select_fields).execute()
             return response.data if response.data else []
         except Exception as e:
@@ -385,13 +412,16 @@ class ResearchDeduplicator:
                          existing_normalized: list,
                          threshold: float,
                          db_keys: list,
-                         use_company_normalization: bool) -> Tuple[str, str]:
+                         use_company_normalization: bool,
+                         reverse_mapping: dict = None,
+                         target_table: str = "") -> Tuple[str, str]:
         """Check a single candidate against existing DB records.
 
         Returns: (action, reason)
             action: "new", "duplicate", "update_candidate", "ambiguous"
         """
         data = candidate.extracted_data
+        reverse_mapping = reverse_mapping or {}
 
         if not existing_normalized:
             return "new", ""
@@ -399,7 +429,7 @@ class ResearchDeduplicator:
         # Normalize candidate fields
         candidate_norms = {}
         for key in db_keys:
-            raw = str(data.get(key, ""))
+            raw = self._get_extraction_value(data, key, reverse_mapping)
             if use_company_normalization and key == "name":
                 candidate_norms[key] = normalize_company_name(raw)
             else:
@@ -416,9 +446,29 @@ class ResearchDeduplicator:
                 matched, similarity = _names_match(cand_val, rec_val, threshold)
 
                 if matched:
+                    existing_id = record.get("id")
+
+                    # For people: if the existing record has no company link
+                    # but the candidate does, allow update instead of skip.
+                    # After normalizer: company name is in "_resolve_company" (mapped from
+                    # extraction "current_company_name").
+                    if target_table == "people":
+                        existing_company = record.get("current_company_id")
+                        candidate_company = (
+                            data.get("_resolve_company")
+                            or data.get("current_company_name")
+                            or ""
+                        )
+                        if not existing_company and candidate_company:
+                            logger.info(
+                                "Duplicate person '%s' but has new company info '%s' -> update",
+                                cand_val, candidate_company,
+                            )
+                            return "update_candidate", existing_id
+
                     return "duplicate", (
                         f"Match on normalized '{cand_val}' ≈ '{rec_val}' "
-                        f"(sim={similarity:.2f}) with id={record.get('id')}"
+                        f"(sim={similarity:.2f}) with id={existing_id}"
                     )
 
                 # Ambiguous zone: close but not certain

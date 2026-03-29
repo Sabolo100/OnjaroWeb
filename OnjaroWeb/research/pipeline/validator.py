@@ -81,34 +81,115 @@ class ResearchValidator:
                     return f"Schema validation: {errors} errors"
 
         # 3. Business rules - generic checks based on extracted data
-        # title is required for all entity types
-        title = data.get("title", "")
-        if not title or len(title) < 2:
-            return "Title missing or too short"
+        # Name/title is required for all entity types
+        name = data.get("name", data.get("title", ""))
+        if not name or len(name) < 2:
+            return "Name/title missing or too short"
 
-        # 4. Person-specific validation: reject headlines as person names
-        if self._is_person_schema(schema_cls):
-            rejection = self._validate_person_name(title, data)
+        # 4. Reject headlines/sentences used as entity names (any type)
+        if len(name.split()) > 10:
+            return f"Name too long ({len(name.split())} words), likely a headline: '{name[:60]}'"
+
+        # 5. Entity-specific validation
+        schema_name = self._get_schema_name(schema_cls)
+
+        if schema_name == "person":
+            rejection = self._validate_person_name(name, data)
             if rejection:
                 return rejection
 
-        # content should be present (list of paragraphs or text)
-        content = data.get("content", [])
-        if isinstance(content, list) and len(content) == 0:
-            # Content is optional for some types, only reject if truly empty
-            # and no other descriptive field exists
-            pass
-        elif isinstance(content, str) and len(content) < 10:
-            return "Content too short"
+        if schema_name == "company":
+            rejection = self._validate_company_name(name, data)
+            if rejection:
+                return rejection
+
+        if schema_name == "building":
+            rejection = self._validate_building_name(name, data)
+            if rejection:
+                return rejection
 
         return None  # Valid
 
-    def _is_person_schema(self, schema_cls) -> bool:
-        """Check if schema is for a person entity."""
+    def _get_schema_name(self, schema_cls) -> str:
+        """Get the entity type from schema class name."""
         if not schema_cls:
-            return False
+            return ""
         name = schema_cls.__name__.lower()
-        return "person" in name
+        if "person" in name:
+            return "person"
+        if "company" in name:
+            return "company"
+        if "building" in name:
+            return "building"
+        return name
+
+    def _validate_company_name(self, name: str, data: dict) -> str:
+        """Reject companies that are not FM/PM/AM sector entities.
+
+        Based on real cleanup findings: banks, utilities, IT companies,
+        tobacco, gas storage, software vendors, generic words, and
+        person names were all incorrectly extracted as companies.
+        """
+        lower = name.lower().strip()
+
+        # Reject generic/meaningless words (< 3 chars or single common word)
+        if len(lower) < 3:
+            return f"Company name too short: '{name}'"
+
+        _GENERIC_WORDS = {
+            "nagyvállalat", "nagyvállalalat", "cég", "vállalat", "szervezet",
+            "intézmény", "hivatal", "iroda", "szolgáltató",
+        }
+        if lower.rstrip(".") in _GENERIC_WORDS:
+            return f"Generic word, not a company name: '{name}'"
+
+        # Reject obvious non-FM/PM sectors
+        _NON_FM_INDICATORS = [
+            "bank", "takarék", "biztosító", "gyógyszer", "pharma",
+            "vízmű", "vízművek", "gáztároló", "gázszolgáltató",
+            "távhő", "főtáv", "erőmű", "áramszolgáltató",
+            "tobacco", "dohány", "sörgyár", "élelmiszer",
+        ]
+        for indicator in _NON_FM_INDICATORS:
+            if indicator in lower:
+                return f"Non-FM/PM sector ({indicator}): '{name}'"
+
+        return None
+
+    def _validate_building_name(self, name: str, data: dict) -> str:
+        """Reject building entries that are actually advertisements or listings.
+
+        Based on real cleanup findings: classified ads (Kiadó/Eladó),
+        generic descriptions, and non-building entries were extracted.
+        """
+        lower = name.lower().strip()
+
+        # Reject classified ad patterns
+        _AD_PREFIXES = [
+            "kiadó ", "eladó ", "bérelhető ", "raktár kiadó",
+            "iroda kiadó", "kiadó és eladó",
+        ]
+        for prefix in _AD_PREFIXES:
+            if lower.startswith(prefix):
+                return f"Classified ad, not a building name: '{name[:60]}'"
+
+        # Reject if the name is a URL or domain
+        if "http" in lower or ".hu" in lower or ".com" in lower:
+            return f"URL in building name: '{name[:60]}'"
+
+        # Reject names that are obviously project descriptions, not building names
+        _DESCRIPTION_MARKERS = [
+            "fejlesztés", "beruházás", "projekt", "pályázat",
+            "tender", "közbeszerzés",
+        ]
+        # Only reject if these are the MAIN content (not part of a real name)
+        words = lower.split()
+        if len(words) >= 3 and words[-1].rstrip(".,") in _DESCRIPTION_MARKERS:
+            # Check if there's a real building name in there
+            if not any(w in lower for w in ["irodaház", "park", "központ", "ház", "tower", "palace", "center", "offices"]):
+                return f"Project description, not a building: '{name[:60]}'"
+
+        return None
 
     def _validate_person_name(self, title: str, data: dict) -> str:
         """Validate that a person 'title' field is an actual person name,
@@ -143,5 +224,17 @@ class ResearchValidator:
         has_capital = any(w[0].isupper() for w in words if w)
         if not has_capital:
             return f"Person name has no capitalized words: '{title[:60]}'"
+
+        # Reject politicians / government officials (not FM/PM sector)
+        # Check position_title (extraction field), not the person name
+        position = data.get("position_title", "").lower()
+        _POLITICIAN_TITLES = [
+            "miniszter", "államtitkár", "képviselő", "polgármester",
+            "alpolgármester", "miniszterelnök", "kormánybiztos",
+            "országgyűlési", "parlamenti",
+        ]
+        for pt in _POLITICIAN_TITLES:
+            if pt in position:
+                return f"Government official, not FM/PM sector: '{title}' ({position[:40]})"
 
         return None

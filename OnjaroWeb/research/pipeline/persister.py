@@ -62,8 +62,12 @@ class ResearchPersister:
                 # Check for update vs insert
                 existing_id = data.pop("_update_existing_id", None)
 
+                # NOTE: field_mapping (title->name, current_company_name->_resolve_company, etc.)
+                # is already applied by the normalizer. The data arriving here has DB column
+                # names and _-prefixed sentinel keys. Do NOT re-apply field_mapping.
+
                 # --- Resolve FK fields before column filtering ---
-                # e.g. current_company_name -> current_company_id for people
+                # e.g. _resolve_company -> current_company_id for people
                 if resolve_fields:
                     self._resolve_foreign_keys(client, data, resolve_fields)
 
@@ -95,7 +99,21 @@ class ResearchPersister:
                     continue
 
                 if existing_id:
-                    result = self._update_record(client, target_table, existing_id, filtered)
+                    # For updates: only overwrite FK fields (like current_company_id)
+                    # if they are currently NULL in the DB. Never overwrite an existing
+                    # company link with a different one from a later extraction.
+                    update_data = filtered.copy()
+                    if target_table == "people" and "current_company_id" in update_data:
+                        try:
+                            existing_resp = client.table(target_table).select(
+                                "current_company_id"
+                            ).eq("id", existing_id).execute()
+                            if existing_resp.data and existing_resp.data[0].get("current_company_id"):
+                                # Already has a company — don't overwrite, but still create job
+                                update_data.pop("current_company_id", None)
+                        except Exception:
+                            pass
+                    result = self._update_record(client, target_table, existing_id, update_data)
                     action = "updated"
                 else:
                     result = self._insert_record(client, target_table, filtered)
@@ -113,6 +131,23 @@ class ResearchPersister:
                     record_name = filtered.get("name", filtered.get("title", ""))
                     logger.info("Persisted record to '%s': %s (%s)",
                                 target_table, str(record_name)[:50], action)
+
+                    # --- Create job record for person -> company link ---
+                    if (target_table == "people"
+                            and target_id
+                            and filtered.get("current_company_id")):
+                        position_title = filtered.get("title", "Nem ismert")
+                        self._find_or_create_job(
+                            client,
+                            jobs_table="jobs",
+                            person_id=str(target_id),
+                            company_id=filtered["current_company_id"],
+                            position_title=position_title,
+                            position_category=data.get("position_category"),
+                            defaults={"is_current": True, "confidence": candidate.confidence},
+                            source_urls=filtered.get("source_urls", []),
+                            now_iso=datetime.now(timezone.utc).isoformat(),
+                        )
 
                     # --- Process related entities (e.g. key_people) ---
                     if target_id:
