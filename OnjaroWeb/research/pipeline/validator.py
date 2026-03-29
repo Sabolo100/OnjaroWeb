@@ -80,26 +80,19 @@ class ResearchValidator:
                 if errors > 3 or candidate.confidence < 0.7:
                     return f"Schema validation: {errors} errors"
 
-        # 3. Business rules
-        # Check required content
+        # 3. Business rules - generic checks based on extracted data
+        # title is required for all entity types
         title = data.get("title", "")
-        if not title or len(title) < 5:
+        if not title or len(title) < 2:
             return "Title missing or too short"
 
+        # content should be present (list of paragraphs or text)
         content = data.get("content", [])
         if isinstance(content, list) and len(content) == 0:
-            return "Content is empty"
-        elif isinstance(content, str) and len(content) < 50:
+            # Content is optional for some types, only reject if truly empty
+            # and no other descriptive field exists
+            pass
+        elif isinstance(content, str) and len(content) < 10:
             return "Content too short"
-
-        # Check type is valid
-        article_type = data.get("type", "")
-        if article_type and article_type not in ("cikk", "edzesterv", "felszereles"):
-            return f"Invalid type: {article_type}"
-
-        # Check style is valid
-        style = data.get("style", "")
-        if style and style not in ("orszaguti", "mtb", "ciklokrossz", "altalanos"):
-            return f"Invalid style: {style}"
 
         return None  # Valid

@@ -36,7 +36,9 @@ class ResearchExtractor:
         # Load extraction prompt templates
         extract_prompts = self.config.load_extract_prompts()
         system_prompt = extract_prompts.get("extract_system_prompt", "")
-        prompt_template = extract_prompts.get("extract_prompt_template", "")
+        # Use schema-specific prompt if available, fall back to generic template
+        schema_prompt_key = f"extract_{schema_name}_prompt"
+        prompt_template = extract_prompts.get(schema_prompt_key) or extract_prompts.get("extract_prompt_template", "")
 
         # Load Pydantic schema for validation
         schema_cls = self.config.load_schema(schema_name)

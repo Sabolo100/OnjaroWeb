@@ -59,10 +59,21 @@ setInterval(updateCountdown, 1000);
 // ── Socket events ─────────────────────────────────────────────────────────────
 socket.on('connect', () => {
     loadInitialData();
-    // Fetch next run time from server
+    // Fetch status from server
     fetch('/api/status').then(r => r.json()).then(d => {
-        if (d.next_run_at) nextRunAt = new Date(d.next_run_at);
-        updateCountdown();
+        if (!d.evolution_enabled) {
+            setSystemStatus('idle', 'Disabled');
+            document.getElementById('current-run-content').innerHTML =
+                '<div class="empty-state">Evolution modul kikapcsolva (EVOLUTION_ENABLED=0)</div>';
+            document.getElementById('countdown-banner').style.display = 'none';
+        } else {
+            if (d.next_run_at) nextRunAt = new Date(d.next_run_at);
+            updateCountdown();
+        }
+        if (!d.research_enabled) {
+            document.getElementById('research-run-content').innerHTML =
+                '<div class="empty-state">Research modul kikapcsolva (RESEARCH_ENABLED=0)</div>';
+        }
     });
 });
 

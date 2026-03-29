@@ -50,17 +50,28 @@ class ResearchFetcher:
         # Build search query template
         query_template = search_prompts.get("search_query_template", "{topic}")
 
+        # Request fewer results per topic so all topics get covered.
+        # Perplexity returns up to 5 reliably; we collect across all topics.
+        per_topic_max = min(3, max_results)
+        hard_cap = max(max_results * 3, 30)  # never exceed hard_cap total
+
         for topic in topics:
+            if len(all_findings) >= hard_cap:
+                break
+
             try:
                 query = query_template.format(
                     topic=topic,
-                    max_results=max_results,
+                    max_results=per_topic_max,
                 )
 
                 logger.info("Searching for item '%s', topic: %s", item_id, topic[:60])
-                findings = connector.search(query, max_results=max_results)
+                findings = connector.search(query, max_results=per_topic_max)
 
                 for finding in findings:
+                    if len(all_findings) >= hard_cap:
+                        break
+
                     # Skip duplicate URLs within this run
                     normalized_url = self._normalize_url(finding.url)
                     if normalized_url in seen_urls:
@@ -91,15 +102,9 @@ class ResearchFetcher:
 
                     all_findings.append(finding)
 
-                    if len(all_findings) >= max_results:
-                        break
-
             except Exception as e:
                 logger.error("Fetch failed for topic '%s': %s", topic[:60], e)
                 continue
-
-            if len(all_findings) >= max_results:
-                break
 
         logger.info("Item '%s': fetched %d unique findings from %d topics",
                     item_id, len(all_findings), len(topics))

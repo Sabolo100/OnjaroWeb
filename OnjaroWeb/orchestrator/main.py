@@ -16,6 +16,9 @@ from orchestrator.config import (
     DASHBOARD_PORT,
     DASHBOARD_HOST,
     PROJECT_ROOT,
+    EVOLUTION_ENABLED,
+    RESEARCH_ENABLED,
+    RUN_ON_STARTUP,
 )
 from orchestrator.lock import Lock
 from orchestrator.event_bus import EventBus
@@ -100,6 +103,9 @@ def _init_research_pipeline():
 
 def db_event_logger(event: dict):
     """Subscribe to event bus and log events to database."""
+    # Research events have their own repository — skip them here to avoid FK errors
+    if event.get("run_id", "").startswith("res_"):
+        return
     try:
         repo.log_event(
             run_id=event.get("run_id", "system"),
@@ -223,15 +229,23 @@ def main():
     logger.info("=" * 60)
     logger.info("Autonomous Evolution System starting")
     logger.info("Project root: %s", PROJECT_ROOT)
-    logger.info("Run interval: %d minutes", RUN_INTERVAL_MINUTES)
+    logger.info("Evolution module: %s", "ENABLED" if EVOLUTION_ENABLED else "DISABLED")
+    logger.info("Research module:  %s", "ENABLED" if RESEARCH_ENABLED else "DISABLED")
+    logger.info("Run on startup:   %s", "YES" if RUN_ON_STARTUP else "NO")
     logger.info("=" * 60)
 
     # Initialize database
     init_db()
     logger.info("Database initialized")
 
+    # Clean up any stale runs from previous crashed/interrupted sessions
+    stale = repo.cancel_stale_runs()
+    if stale:
+        logger.info("Cancelled %d stale run(s) from previous session", stale)
+
     # Initialize research pipeline
-    _init_research_pipeline()
+    if RESEARCH_ENABLED:
+        _init_research_pipeline()
 
     # Subscribe event bus to DB logger
     event_bus.subscribe(db_event_logger)
@@ -243,27 +257,33 @@ def main():
 
     # Setup scheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(
-        run_cycle,
-        "interval",
-        minutes=RUN_INTERVAL_MINUTES,
-        max_instances=1,
-        id="evolution_cycle",
-    )
-    scheduler.add_job(
-        research_cycle,
-        "interval",
-        minutes=RESEARCH_RUN_INTERVAL_MINUTES,
-        max_instances=1,
-        id="research_cycle",
-    )
+    if EVOLUTION_ENABLED:
+        scheduler.add_job(
+            run_cycle,
+            "interval",
+            minutes=RUN_INTERVAL_MINUTES,
+            max_instances=1,
+            id="evolution_cycle",
+        )
+        logger.info("Evolution scheduler: every %d min", RUN_INTERVAL_MINUTES)
+    if RESEARCH_ENABLED:
+        scheduler.add_job(
+            research_cycle,
+            "interval",
+            minutes=RESEARCH_RUN_INTERVAL_MINUTES,
+            max_instances=1,
+            id="research_cycle",
+        )
+        logger.info("Research scheduler: every %d min", RESEARCH_RUN_INTERVAL_MINUTES)
     scheduler.start()
-    logger.info("Scheduler started (evolution: every %d min, research: every %d min)",
-                RUN_INTERVAL_MINUTES, RESEARCH_RUN_INTERVAL_MINUTES)
 
-    # Run immediately on start
-    logger.info("Running initial cycle...")
-    run_cycle()
+    # Run immediately on start (only if enabled)
+    if RUN_ON_STARTUP and EVOLUTION_ENABLED:
+        logger.info("Running initial evolution cycle (RUN_ON_STARTUP=1)...")
+        run_cycle()
+    if RUN_ON_STARTUP and RESEARCH_ENABLED:
+        logger.info("Running initial research cycle (RUN_ON_STARTUP=1)...")
+        threading.Thread(target=research_cycle, daemon=True).start()
 
     # Handle graceful shutdown
     def shutdown(signum, frame):

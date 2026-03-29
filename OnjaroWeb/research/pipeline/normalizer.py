@@ -1,6 +1,5 @@
 """Research Normalizer - field mapping, cleaning, and normalization."""
 
-import hashlib
 import logging
 import re
 import unicodedata
@@ -42,14 +41,18 @@ class ContentNormalizer:
         defaults = table_config.get("defaults", {})
         auto_fields = table_config.get("auto_fields", {})
 
-        # Apply field mapping
+        # Build set of allowed DB column names from mapping + defaults + auto_fields
+        allowed_columns = set(field_mapping.values()) | set(defaults.keys()) | set(auto_fields.keys())
+
+        # Apply field mapping: source_field -> target_field
         for source_field, target_field in field_mapping.items():
             if source_field in data:
                 normalized[target_field] = data[source_field]
 
-        # Include unmapped fields that are in the data
+        # Only include unmapped fields if they match an allowed DB column name.
+        # This prevents extra LLM-generated fields from leaking to Supabase.
         for key, value in data.items():
-            if key not in field_mapping and key not in normalized:
+            if key not in field_mapping and key in allowed_columns and key not in normalized:
                 normalized[key] = value
 
         # Apply defaults for missing fields
@@ -57,35 +60,37 @@ class ContentNormalizer:
             if field not in normalized or normalized[field] is None:
                 normalized[field] = default_value
 
-        # Auto-generate fields
+        # Auto-generate timestamp fields
         for field, strategy in auto_fields.items():
-            if strategy == "auto_generate" and field not in normalized:
-                normalized[field] = self._generate_id(normalized)
-            elif strategy == "auto_timestamp":
+            if strategy == "auto_timestamp":
                 normalized[field] = datetime.now(timezone.utc).isoformat()
 
-        # Field-level normalization
-        if "title" in normalized:
-            normalized["title"] = self._clean_text(normalized["title"])
+        # Generic field-level normalization
+        # Clean text fields (name, title, etc.)
+        for field in ("name", "title", "entity_name"):
+            if field in normalized and isinstance(normalized[field], str):
+                normalized[field] = self._clean_text(normalized[field])
 
-        if "excerpt" in normalized:
-            normalized["excerpt"] = self._clean_text(normalized["excerpt"])
-            if len(normalized["excerpt"]) > 500:
-                normalized["excerpt"] = normalized["excerpt"][:497] + "..."
-
+        # Normalize list-of-paragraphs fields → join into plain text for DB storage
+        for field in ("description", "bio", "summary"):
+            if field in normalized:
+                normalized[field] = self._content_to_text(normalized[field])
+        # Keep 'content' as list only if it's explicitly a list field not mapped to text
         if "content" in normalized:
             normalized["content"] = self._normalize_content(normalized["content"])
 
-        if "word_count" in normalized and not normalized["word_count"]:
-            normalized["word_count"] = self._count_words(normalized.get("content", []))
+        # source_urls should always be a list
+        if "source_urls" in normalized:
+            val = normalized["source_urls"]
+            if isinstance(val, str):
+                normalized["source_urls"] = [val]
+            elif not isinstance(val, list):
+                normalized["source_urls"] = []
 
-        if "date" in normalized and not normalized["date"]:
-            normalized["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-        if "category_color" in normalized and not normalized["category_color"]:
-            normalized["category_color"] = self._default_category_color(
-                normalized.get("type", "cikk")
-            )
+        # Empty string -> None for optional string fields to avoid enum/constraint violations
+        for key, value in list(normalized.items()):
+            if value == "" and key not in ("name", "title"):
+                normalized[key] = None
 
         return normalized
 
@@ -94,11 +99,18 @@ class ContentNormalizer:
         """Clean and normalize text."""
         if not isinstance(text, str):
             return str(text) if text else ""
-        # Normalize unicode
         text = unicodedata.normalize("NFC", text)
-        # Remove excessive whitespace
         text = re.sub(r'\s+', ' ', text).strip()
         return text
+
+    @staticmethod
+    def _content_to_text(content) -> str:
+        """Convert list of paragraphs or any content to a plain text string."""
+        if isinstance(content, list):
+            return " ".join(p.strip() for p in content if isinstance(p, str) and p.strip())
+        if isinstance(content, str):
+            return content.strip()
+        return ""
 
     @staticmethod
     def _normalize_content(content) -> list:
@@ -111,32 +123,3 @@ class ContentNormalizer:
                 paragraphs = [p.strip() for p in content.split("\n") if p.strip()]
             return paragraphs
         return []
-
-    @staticmethod
-    def _count_words(content) -> int:
-        """Count words in content."""
-        if isinstance(content, list):
-            return sum(len(p.split()) for p in content if isinstance(p, str))
-        if isinstance(content, str):
-            return len(content.split())
-        return 0
-
-    @staticmethod
-    def _generate_id(data: dict) -> str:
-        """Generate a unique ID based on content hash."""
-        title = data.get("title", "")
-        article_type = data.get("type", "cikk")
-        prefix_map = {"cikk": "c", "edzesterv": "e", "felszereles": "f"}
-        prefix = prefix_map.get(article_type, "x")
-        hash_input = f"{title}:{article_type}"
-        short_hash = hashlib.md5(hash_input.encode()).hexdigest()[:8]
-        return f"{prefix}_{short_hash}"
-
-    @staticmethod
-    def _default_category_color(article_type: str) -> str:
-        """Get default category color based on type."""
-        return {
-            "cikk": "bg-blue-100 text-blue-800",
-            "edzesterv": "bg-green-100 text-green-800",
-            "felszereles": "bg-amber-100 text-amber-800",
-        }.get(article_type, "bg-gray-100 text-gray-800")

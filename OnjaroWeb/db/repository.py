@@ -70,6 +70,16 @@ class Repository:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def cancel_stale_runs(self) -> int:
+        """Mark any stuck INIT/RUNNING runs as CANCELLED on startup."""
+        conn = get_connection()
+        result = conn.execute(
+            "UPDATE runs SET status='CANCELLED', ended_at=? WHERE status IN ('INIT', 'RUNNING')",
+            (datetime.now().isoformat(),),
+        )
+        conn.commit()
+        return result.rowcount
+
     def get_active_run(self) -> dict:
         conn = get_connection()
         row = conn.execute(

@@ -12,6 +12,12 @@ LOCK_FILE = os.path.join(PROJECT_ROOT, "data", ".orchestrator.lock")
 CLAUDE_MD_PATH = os.path.join(PROJECT_ROOT, "CLAUDE.md")
 PROMPTS_DIR = os.path.join(PROJECT_ROOT, "agents", "prompts")
 
+# Module on/off switches — set in .env (1 = enabled, 0 = disabled)
+EVOLUTION_ENABLED = bool(int(os.environ.get("EVOLUTION_ENABLED", "1")))
+RESEARCH_ENABLED = bool(int(os.environ.get("RESEARCH_ENABLED", "1")))
+# Run a cycle immediately on startup? (1 = yes, 0 = wait for first scheduled interval)
+RUN_ON_STARTUP = bool(int(os.environ.get("RUN_ON_STARTUP", "0")))
+
 # Scheduling - change this to adjust how often the system runs
 RUN_INTERVAL_MINUTES = 300
 

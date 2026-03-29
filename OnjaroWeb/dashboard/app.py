@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 
-from orchestrator.config import RUN_INTERVAL_MINUTES
+from orchestrator.config import RUN_INTERVAL_MINUTES, EVOLUTION_ENABLED, RESEARCH_ENABLED
 from orchestrator.event_bus import EventBus
 from db.repository import Repository
 from db.research_repository import ResearchRepository
@@ -43,6 +43,8 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
             "now": now.isoformat(),
             "next_run_at": next_run_iso,
             "interval_minutes": RUN_INTERVAL_MINUTES,
+            "evolution_enabled": EVOLUTION_ENABLED,
+            "research_enabled": RESEARCH_ENABLED,
         })
 
     @app.route("/api/runs")
