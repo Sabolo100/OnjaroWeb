@@ -57,7 +57,31 @@ _LEGAL_SUFFIXES = [
 
 # Common Hungarian/English activity descriptor words that appear at the end
 # of company names and should be stripped for dedup comparison.
+# ORDER MATTERS: longest first to avoid partial matches.
 _ACTIVITY_SUFFIXES = [
+    # Compound facility/building type names (must be before shorter parts)
+    "logisztikai és ipari park",
+    "logisztikai centrum",
+    "logisztikai központ",
+    "logisztikai park",
+    "ipari és logisztikai park",
+    "ipari park",
+    "business park",
+    "business center",
+    "business centre",
+    "science park",
+    "irodapark",
+    "irodaház",
+    "irodaközpont",
+    "office park",
+    "office center",
+    "office centre",
+    "bevásárlóközpont",
+    "pláza",
+    "plaza",
+    "center",
+    "centre",
+    # Company activity descriptors (original list, longest first)
     "ingatlankezelő és szolgáltató",
     "ingatlankezelő és üzemeltető",
     "ingatlankezelő",
@@ -93,6 +117,8 @@ _ACTIVITY_SUFFIXES = [
     "csoport",
     "holding",
     "international",
+    # Single-word generic suffixes (last, as catch-all)
+    "park",
 ]
 
 
@@ -122,15 +148,24 @@ def normalize_company_name(name: str) -> str:
             text = text[:-len(suffix)].rstrip(" .,;-–")
             break  # only one legal form
 
-    # Strip activity descriptor suffixes (can be multiple, strip iteratively)
+    # Strip activity descriptor suffixes (can be multiple, strip iteratively).
+    # Safety: only strip if the suffix is at a word boundary (preceded by a space
+    # or start-of-string) and the remaining core is at least 2 chars.
     changed = True
     while changed:
         changed = False
         for suffix in _ACTIVITY_SUFFIXES:
             if text.endswith(suffix) and len(text) > len(suffix):
-                text = text[:-len(suffix)].rstrip(" .,;-–")
-                changed = True
-                break  # restart from longest
+                # Check word boundary: the char before the suffix must be a space
+                prefix_end = len(text) - len(suffix)
+                if prefix_end > 0 and text[prefix_end - 1] != ' ':
+                    continue  # suffix is part of a compound word, skip
+                candidate_core = text[:prefix_end].rstrip(" .,;-–")
+                # Don't strip if it would leave us with less than 2 meaningful chars
+                if len(candidate_core) >= 2:
+                    text = candidate_core
+                    changed = True
+                    break  # restart from longest
 
     # Normalize unicode and whitespace
     text = re.sub(r'[.\-–—/\\]', ' ', text)  # punctuation to space
@@ -158,7 +193,9 @@ def _names_match(name_a: str, name_b: str, threshold: float) -> Tuple[bool, floa
         return True, 0.95
 
     # Token-based matching: check if all tokens of the shorter name
-    # appear in the longer name (handles word reordering)
+    # appear in the longer name (handles word reordering).
+    # Require at least 2 meaningful tokens to match — single-token subsets
+    # cause false positives on generic type words.
     tokens_a = set(name_a.split())
     tokens_b = set(name_b.split())
     if tokens_a and tokens_b:
@@ -166,7 +203,7 @@ def _names_match(name_a: str, name_b: str, threshold: float) -> Tuple[bool, floa
             (tokens_a, tokens_b) if len(tokens_a) <= len(tokens_b)
             else (tokens_b, tokens_a)
         )
-        if shorter_tokens.issubset(longer_tokens) and len(shorter_tokens) >= 1:
+        if shorter_tokens.issubset(longer_tokens) and len(shorter_tokens) >= 2:
             return True, 0.92
 
     # SequenceMatcher fallback

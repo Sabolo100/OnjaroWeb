@@ -1,0 +1,34 @@
+# Sensitive credentials - NEVER commit these
+.codex/
+.claude/
+.env
+.env.*
+*.env
+*.local
+
+# IDE and system
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+node_modules/
+.next/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log

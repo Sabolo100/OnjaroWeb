@@ -11,6 +11,7 @@ from db.research_repository import ResearchRepository
 
 # Shared state: next scheduled run time (set by main.py)
 next_run_at = None
+session_started_at = datetime.now(timezone.utc)
 
 
 def set_next_run_at(dt: datetime):
@@ -45,6 +46,7 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
             "interval_minutes": RUN_INTERVAL_MINUTES,
             "evolution_enabled": EVOLUTION_ENABLED,
             "research_enabled": RESEARCH_ENABLED,
+            "session_started_at": session_started_at.isoformat(),
         })
 
     @app.route("/api/runs")
@@ -143,9 +145,26 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
         active_run = repo_instance.get_active_run()
         if active_run:
             socketio.emit("active_run", active_run)
+
         # Send active research run
         active_research = research_repo_instance.get_active_research_run()
         if active_research:
             socketio.emit("active_research_run", active_research)
+            # Also send timeline events for the active run so the dashboard
+            # is populated immediately (fix #4: timeline empty on load)
+            run_id = active_research.get("run_id")
+            if run_id:
+                events = research_repo_instance.get_research_events(run_id)
+                if events:
+                    socketio.emit("research_timeline_history", events)
+        else:
+            # No active run — send events from the most recent completed run
+            recent_runs = research_repo_instance.get_recent_research_runs(limit=1)
+            if recent_runs:
+                last_run_id = recent_runs[0].get("run_id")
+                if last_run_id:
+                    events = research_repo_instance.get_research_events(last_run_id)
+                    if events:
+                        socketio.emit("research_timeline_history", events)
 
     return app, socketio

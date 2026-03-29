@@ -161,6 +161,12 @@ class ResearchRunManager:
         elif failed > 0 and completed == 0:
             raise RuntimeError(f"All {failed} research items failed")
 
+        # ── Deep Crawl Phase: mine known companies for people & buildings ──
+        try:
+            self._execute_deep_crawl(run_id)
+        except Exception as e:
+            logger.error("Deep crawl phase failed (non-fatal): %s", e)
+
     def _process_item(self, run_id: str, item: dict):
         """Process a single research item through all pipeline phases."""
         item_id = item.get("id", "unknown")
@@ -261,6 +267,54 @@ class ResearchRunManager:
             severity="INFO", event_type="research_phase_change",
             message=f"Research phase: {phase.value}",
         )
+
+    def _execute_deep_crawl(self, run_id: str):
+        """Deep crawl: search known companies for their people and buildings.
+
+        Picks companies that haven't been deeply crawled yet (or not recently),
+        generates dynamic search items for them, and processes them through the
+        standard pipeline.
+        """
+        from research.pipeline.deep_crawl import (
+            get_companies_to_crawl,
+            generate_deep_crawl_items,
+            mark_company_crawled,
+        )
+
+        companies = get_companies_to_crawl()
+        if not companies:
+            logger.info("Deep crawl: no companies eligible for deep crawl")
+            return
+
+        company_names = [c.get("name", "?") for c in companies]
+        logger.info("Deep crawl: processing %d companies: %s",
+                     len(companies), ", ".join(company_names))
+
+        self.event_bus.emit(
+            run_id=run_id, phase="DEEP_CRAWL", agent_name="research_manager",
+            severity="INFO", event_type="research_phase_change",
+            message=f"Deep crawl: {len(companies)} cég feldolgozása ({', '.join(company_names[:3])})",
+        )
+
+        deep_items = generate_deep_crawl_items(companies)
+        crawled_company_ids = set()
+
+        for item in deep_items:
+            try:
+                self._process_item(run_id, item)
+                # Mark company as crawled after both people+buildings are done
+                company_id = item.get("_deep_crawl_company_id", "")
+                if company_id:
+                    crawled_company_ids.add(company_id)
+            except Exception as e:
+                logger.error("Deep crawl item '%s' failed: %s", item.get("id", "?"), e)
+
+        # Mark all processed companies as crawled
+        for cid in crawled_company_ids:
+            mark_company_crawled(cid)
+            logger.info("Deep crawl: marked company %s as crawled", cid[:12])
+
+        logger.info("Deep crawl: completed for %d companies", len(crawled_company_ids))
 
     def execute_single_item(self, item_id: str, trigger_type: str = "manual") -> str:
         """Run research for a single item (ad-hoc run)."""

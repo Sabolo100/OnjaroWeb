@@ -241,7 +241,12 @@ def main():
     # Clean up any stale runs from previous crashed/interrupted sessions
     stale = repo.cancel_stale_runs()
     if stale:
-        logger.info("Cancelled %d stale run(s) from previous session", stale)
+        logger.info("Cancelled %d stale evolution run(s) from previous session", stale)
+
+    # Clean up stale research runs (e.g. after crash or DST clock jump)
+    stale_research = research_repo.cancel_stale_research_runs()
+    if stale_research:
+        logger.info("Cancelled %d stale research run(s) from previous session", stale_research)
 
     # Initialize research pipeline
     if RESEARCH_ENABLED:
@@ -255,8 +260,8 @@ def main():
     dashboard_thread.start()
     logger.info("Dashboard thread started")
 
-    # Setup scheduler
-    scheduler = BackgroundScheduler()
+    # Setup scheduler — use UTC timezone to avoid DST clock-jump missed runs
+    scheduler = BackgroundScheduler(timezone="UTC")
     if EVOLUTION_ENABLED:
         scheduler.add_job(
             run_cycle,
@@ -286,19 +291,21 @@ def main():
         threading.Thread(target=research_cycle, daemon=True).start()
 
     # Handle graceful shutdown
+    shutdown_requested = threading.Event()
+
     def shutdown(signum, frame):
         logger.info("Shutdown signal received")
-        scheduler.shutdown(wait=False)
-        sys.exit(0)
+        shutdown_requested.set()
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    # Keep alive
+    # Keep alive — wait for shutdown signal without traceback noise
     try:
-        while True:
-            time.sleep(1)
-    except (KeyboardInterrupt, SystemExit):
+        shutdown_requested.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
         logger.info("Shutting down...")
         scheduler.shutdown(wait=False)
 

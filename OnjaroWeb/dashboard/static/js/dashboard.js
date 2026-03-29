@@ -6,17 +6,60 @@ const socket = io();
 let currentRunId = null;
 let nextRunAt = null;
 let countdownInterval = null;
+let sessionStartTime = Date.now();
+
+// ── CET Formatter ─────────────────────────────────────────────────────────────
+// All timestamps displayed in CET (Central European Time)
+function formatTime(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return ts;
+    return d.toLocaleString('hu-HU', {
+        timeZone: 'Europe/Budapest',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+function formatTimeShort(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return ts;
+    return d.toLocaleString('hu-HU', {
+        timeZone: 'Europe/Budapest',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
 
 // ── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
     const now = new Date();
     document.getElementById('clock').textContent =
-        now.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        now.toLocaleTimeString('hu-HU', { timeZone: 'Europe/Budapest', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     document.getElementById('clock-date').textContent =
-        now.toLocaleDateString('hu-HU', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+        now.toLocaleDateString('hu-HU', { timeZone: 'Europe/Budapest', year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }) + ' CET';
 }
 setInterval(updateClock, 1000);
 updateClock();
+
+// ── Session Timer / Stopwatch ─────────────────────────────────────────────────
+function updateSessionTimer() {
+    const el = document.getElementById('session-timer');
+    if (!el) return;
+    const elapsed = Date.now() - sessionStartTime;
+    const h = Math.floor(elapsed / 3600000);
+    const m = Math.floor((elapsed % 3600000) / 60000);
+    const s = Math.floor((elapsed % 60000) / 1000);
+    el.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+setInterval(updateSessionTimer, 1000);
 
 // ── Countdown ────────────────────────────────────────────────────────────────
 function updateCountdown() {
@@ -52,7 +95,7 @@ function updateCountdown() {
         el.className = 'countdown-timer';
     }
 
-    info.textContent = `${nextRunAt.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}-kor`;
+    info.textContent = `${nextRunAt.toLocaleTimeString('hu-HU', { timeZone: 'Europe/Budapest', hour: '2-digit', minute: '2-digit' })} CET`;
 }
 setInterval(updateCountdown, 1000);
 
@@ -61,8 +104,12 @@ socket.on('connect', () => {
     loadInitialData();
     // Fetch status from server
     fetch('/api/status').then(r => r.json()).then(d => {
+        // Store server-reported session start for the stopwatch
+        if (d.session_started_at) {
+            sessionStartTime = new Date(d.session_started_at).getTime();
+        }
         if (!d.evolution_enabled) {
-            setSystemStatus('idle', 'Disabled');
+            setSystemStatus('idle', 'Evolution KI');
             document.getElementById('current-run-content').innerHTML =
                 '<div class="empty-state">Evolution modul kikapcsolva (EVOLUTION_ENABLED=0)</div>';
             document.getElementById('countdown-banner').style.display = 'none';
@@ -74,8 +121,22 @@ socket.on('connect', () => {
             document.getElementById('research-run-content').innerHTML =
                 '<div class="empty-state">Research modul kikapcsolva (RESEARCH_ENABLED=0)</div>';
         }
+        // Update combined system status
+        updateCombinedStatus(d);
     });
 });
+
+function updateCombinedStatus(statusData) {
+    // Determine the real combined status
+    const evoEnabled = statusData.evolution_enabled;
+    const resEnabled = statusData.research_enabled;
+
+    if (!evoEnabled && !resEnabled) {
+        setSystemStatus('idle', 'Minden KI');
+    } else {
+        // Will be updated dynamically by socket events
+    }
+}
 
 socket.on('next_run_scheduled', (data) => {
     if (data.next_run_at) nextRunAt = new Date(data.next_run_at);
@@ -85,11 +146,12 @@ socket.on('next_run_scheduled', (data) => {
 socket.on('active_run', (data) => {
     currentRunId = data.run_id;
     updateCurrentRun(data);
+    setSystemStatus('active', 'Evolution fut');
 });
 
 socket.on('run_start', (event) => {
     currentRunId = event.run_id;
-    setSystemStatus('active', 'Running');
+    setSystemStatus('active', 'Evolution fut');
     addTimelineEvent(event);
     updateCurrentRun({ run_id: event.run_id, status: 'RUNNING', phase: 'INIT', started_at: event.timestamp });
 });
@@ -131,7 +193,7 @@ socket.on('run_complete', (event) => {
 
 socket.on('run_failed', (event) => {
     currentRunId = null;
-    setSystemStatus('error', 'Failed');
+    setSystemStatus('error', 'Hiba');
     addTimelineEvent(event);
     updatePhase('FAILED', 'orchestrator', event.message);
     loadRuns();
@@ -144,6 +206,21 @@ function setSystemStatus(state, text) {
     const dot = indicator.querySelector('.dot');
     dot.className = 'dot' + (state === 'active' ? ' active' : state === 'error' ? ' error' : '');
     indicator.querySelector('.status-text').textContent = text;
+
+    // Update the session status banner
+    const banner = document.getElementById('session-status-banner');
+    if (banner) {
+        if (state === 'active') {
+            banner.className = 'session-status-banner active';
+            banner.querySelector('.session-status-text').textContent = text;
+        } else if (state === 'error') {
+            banner.className = 'session-status-banner error';
+            banner.querySelector('.session-status-text').textContent = text;
+        } else {
+            banner.className = 'session-status-banner idle';
+            banner.querySelector('.session-status-text').textContent = text;
+        }
+    }
 }
 
 function updateCurrentRun(run) {
@@ -252,7 +329,7 @@ async function loadFeatures() {
     el.innerHTML = features.slice(0, 15).map(f => `
         <div class="feature-item">
             <div class="feature-title">${f.title}</div>
-            <div class="feature-meta">${f.screen||''} | ${formatTime(f.committed_at)}</div>
+            <div class="feature-meta">${f.screen||''} | ${formatTimeShort(f.committed_at)}</div>
         </div>`).join('');
 }
 
@@ -322,18 +399,29 @@ function switchTab(tabName) {
 // RESEARCH TAB - Socket events
 // ══════════════════════════════════════════════════════════════════════════════
 
+let researchRunActive = false;
+
 socket.on('active_research_run', (data) => {
+    researchRunActive = true;
     updateResearchRun(data);
+    setSystemStatus('active', `Research fut — ${data.phase || 'INIT'}`);
 });
 
 socket.on('research_run_start', (event) => {
+    researchRunActive = true;
     addResearchTimelineEvent(event);
     updateResearchRun({ run_id: event.run_id, status: 'RUNNING', phase: 'QUEUED', started_at: event.timestamp });
+    setSystemStatus('active', 'Research fut — QUEUED');
 });
 
 socket.on('research_phase_change', (event) => {
     addResearchTimelineEvent(event);
-    updateResearchPhase(event.phase, event.agent_name || 'research_manager', event.message);
+    const phase = event.phase || '';
+    updateResearchPhase(phase, event.agent_name || 'research_manager', event.message);
+    // Update header status to show combined state
+    if (researchRunActive) {
+        setSystemStatus('active', `Research fut — ${phase.toUpperCase()}`);
+    }
 });
 
 socket.on('research_agent_start', (event) => { addResearchTimelineEvent(event); });
@@ -346,25 +434,50 @@ socket.on('research_item_complete', (event) => {
 });
 
 socket.on('research_run_complete', (event) => {
+    researchRunActive = false;
     addResearchTimelineEvent(event);
     updateResearchPhase('COMPLETED', 'research_manager', event.message);
+    setSystemStatus('idle', 'Idle — Research kész');
     loadResearchRuns();
+    loadResearchReviews();
 });
 
 socket.on('research_run_failed', (event) => {
+    researchRunActive = false;
     addResearchTimelineEvent(event);
     updateResearchPhase('FAILED', 'research_manager', event.message);
+    setSystemStatus('error', 'Hiba — Research');
     loadResearchRuns();
+});
+
+// ── Receive initial research timeline events on connect ──
+socket.on('research_timeline_history', (events) => {
+    if (!events || !events.length) return;
+    const container = document.getElementById('research-timeline');
+    if (!container) return;
+    container.innerHTML = '';
+    // events arrive oldest-first, we display newest-first
+    events.reverse().forEach(e => {
+        const cssClass = e.severity === 'ERROR' ? 'error' :
+                         e.event_type === 'research_run_complete' ? 'success' : '';
+        const el = document.createElement('div');
+        el.className = `timeline-event ${cssClass}`;
+        el.innerHTML = `
+            <div class="timeline-time">${formatTime(e.timestamp)}</div>
+            <div class="timeline-agent">${e.agent_name||'-'}</div>
+            <div class="timeline-message">${e.message||''}</div>`;
+        container.appendChild(el);
+    });
 });
 
 // ── Research UI updates ──────────────────────────────────────────────────────
 
 function updateResearchRun(run) {
+    const statusPhase = run.phase ? `${run.status || 'RUNNING'} — ${run.phase}` : (run.status || '-');
     document.getElementById('research-run-content').innerHTML = `
         <div class="run-info">
             <div class="run-info-row"><span class="run-info-label">Run ID</span><span class="run-info-value">${run.run_id || '-'}</span></div>
-            <div class="run-info-row"><span class="run-info-label">Status</span><span class="run-status ${(run.status||'').toLowerCase()}">${run.status||'-'}</span></div>
-            <div class="run-info-row"><span class="run-info-label">Phase</span><span class="phase-badge ${(run.phase||'').toLowerCase()}">${run.phase||'-'}</span></div>
+            <div class="run-info-row"><span class="run-info-label">Status</span><span class="run-status ${(run.status||'').toLowerCase()}">${statusPhase}</span></div>
             <div class="run-info-row"><span class="run-info-label">Items</span><span class="run-info-value">${run.items_completed||0}/${run.items_total||0} (${run.items_failed||0} failed)</span></div>
             <div class="run-info-row"><span class="run-info-label">Started</span><span class="run-info-value">${formatTime(run.started_at)}</span></div>
         </div>`;
@@ -421,7 +534,35 @@ async function loadResearchData() {
         loadResearchRuns(),
         loadResearchReviews(),
         loadResearchSources(),
+        loadResearchTimeline(),
     ]);
+}
+
+async function loadResearchTimeline() {
+    // Fetch timeline from the most recent research run
+    const runs = await fetch('/api/research/runs').then(r => r.json()).catch(() => []);
+    if (!runs.length) return;
+    const latestRunId = runs[0].run_id;
+    const detail = await fetch(`/api/research/runs/${latestRunId}`).then(r => r.json()).catch(() => null);
+    if (!detail || !detail.events || !detail.events.length) return;
+
+    const container = document.getElementById('research-timeline');
+    if (!container) return;
+    container.innerHTML = '';
+    detail.events.reverse().forEach(e => {
+        const cssClass = e.severity === 'ERROR' ? 'error' :
+                         e.event_type === 'research_run_complete' ? 'success' : '';
+        const el = document.createElement('div');
+        el.className = `timeline-event ${cssClass}`;
+        el.innerHTML = `
+            <div class="timeline-time">${formatTime(e.timestamp)}</div>
+            <div class="timeline-agent">${e.agent_name||'-'}</div>
+            <div class="timeline-message">${e.message||''}</div>`;
+        container.appendChild(el);
+    });
+
+    // Also update run info panel
+    if (detail.run) updateResearchRun(detail.run);
 }
 
 async function loadResearchRuns() {
@@ -434,6 +575,7 @@ async function loadResearchRuns() {
             <span class="run-id">${run.run_id.slice(0,12)}</span>
             <span class="run-feature">${run.items_completed||0}/${run.items_total||0} items</span>
             <span class="run-status ${(run.status||'').toLowerCase()}">${run.status}</span>
+            <span class="run-time">${formatTimeShort(run.started_at)}</span>
         </div>`).join('');
 }
 
@@ -459,7 +601,7 @@ async function loadResearchRunDetail(runId) {
             findingsEl.innerHTML = findings.slice(0, 20).map(f => `
                 <div class="feature-item">
                     <div class="feature-title">${f.title || f.url}</div>
-                    <div class="feature-meta">${f.source_domain || ''} | ${formatTime(f.fetched_at)}</div>
+                    <div class="feature-meta">${f.source_domain || ''} | ${formatTimeShort(f.fetched_at)}</div>
                 </div>`).join('');
         }
     }
@@ -481,16 +623,58 @@ async function loadResearchReviews() {
         }
     }
 
-    if (!reviews.length) { el.innerHTML = '<div class="empty-state">No items pending review</div>'; return; }
-    el.innerHTML = reviews.map(r => `
-        <div class="test-item">
-            <span class="test-name">${r.item_id || '-'} (conf: ${(r.confidence||0).toFixed(2)})</span>
-            <span class="review-reason">${r.review_reason || ''}</span>
-            <div class="review-actions">
-                <button class="btn-approve" onclick="approveReview(${r.review_id})">Approve</button>
-                <button class="btn-reject" onclick="rejectReview(${r.review_id})">Reject</button>
+    if (!reviews.length) { el.innerHTML = '<div class="empty-state">Nincs elbiralasra varo elem</div>'; return; }
+    el.innerHTML = reviews.map(r => {
+        // Parse extracted_data for richer display
+        let extracted = {};
+        try {
+            if (typeof r.extracted_data === 'string') {
+                extracted = JSON.parse(r.extracted_data);
+            } else if (r.extracted_data) {
+                extracted = r.extracted_data;
+            }
+        } catch(e) {}
+
+        const entityName = extracted.title || extracted.name || '-';
+        const entityType = r.item_id ? r.item_id.replace(/_hu$/, '').replace(/_/g, ' ') : '-';
+        const confidence = (r.confidence || 0);
+        const confPct = Math.round(confidence * 100);
+        const confColor = confPct >= 70 ? 'var(--accent-green)' : confPct >= 50 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+
+        // Build detail fields
+        let details = [];
+        if (extracted.service_types && extracted.service_types.length) details.push(`Szolg: ${extracted.service_types.join(', ')}`);
+        if (extracted.building_type) details.push(`Típus: ${extracted.building_type}`);
+        if (extracted.building_class) details.push(`Kat: ${extracted.building_class}`);
+        if (extracted.city || extracted.headquarters_city) details.push(`Város: ${extracted.city || extracted.headquarters_city}`);
+        if (extracted.address) details.push(`Cím: ${extracted.address}`);
+        if (extracted.website) details.push(`Web: ${extracted.website}`);
+        if (extracted.position_title || extracted.title) details.push(`Pozíció: ${extracted.position_title || extracted.title}`);
+        if (extracted.current_company_name) details.push(`Cég: ${extracted.current_company_name}`);
+        if (extracted.total_area_sqm) details.push(`Terület: ${extracted.total_area_sqm} m²`);
+        if (extracted.source_url) details.push(`Forrás: ${String(extracted.source_url).substring(0, 60)}`);
+        const detailsHtml = details.length ? `<div class="review-details">${details.map(d => `<span class="review-detail-chip">${d}</span>`).join('')}</div>` : '';
+
+        return `
+        <div class="review-card">
+            <div class="review-header">
+                <div class="review-entity-name">${entityName}</div>
+                <div class="review-entity-type">${entityType}</div>
             </div>
-        </div>`).join('');
+            <div class="review-confidence-row">
+                <div class="review-conf-bar-bg">
+                    <div class="review-conf-bar" style="width:${confPct}%; background:${confColor}"></div>
+                </div>
+                <span class="review-conf-label" style="color:${confColor}">${confPct}%</span>
+            </div>
+            <div class="review-reason-text">${r.review_reason || ''}</div>
+            ${detailsHtml}
+            <div class="review-actions">
+                <button class="btn-approve" onclick="approveReview(${r.review_id})">&#10003; Jóváhagy</button>
+                <button class="btn-reject" onclick="rejectReview(${r.review_id})">&#10007; Elutasít</button>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 async function loadResearchSources() {
@@ -517,12 +701,4 @@ async function rejectReview(reviewId) {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
     });
     loadResearchReviews();
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function formatTime(ts) {
-    if (!ts) return '-';
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) return ts;
-    return d.toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }

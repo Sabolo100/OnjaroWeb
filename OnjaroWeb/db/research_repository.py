@@ -101,6 +101,28 @@ class ResearchRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def cancel_stale_research_runs(self) -> int:
+        """Mark any stuck RUNNING research runs and their items as CANCELLED on startup.
+
+        Called at orchestrator startup to clean up runs that were interrupted
+        by a crash, restart, or DST clock jump.
+        """
+        now = datetime.now().isoformat()
+        with transaction() as conn:
+            # Cancel the run itself
+            result = conn.execute(
+                "UPDATE research_runs SET status='CANCELLED', ended_at=? WHERE status='RUNNING'",
+                (now,),
+            )
+            cancelled = result.rowcount
+            if cancelled:
+                # Also mark their in-progress items as cancelled
+                conn.execute(
+                    "UPDATE research_items_log SET status='cancelled', completed_at=? WHERE status='running'",
+                    (now,),
+                )
+        return cancelled
+
     # ── Research Events ──
 
     def log_research_event(self, run_id: str, phase: str = "", agent_name: str = "",

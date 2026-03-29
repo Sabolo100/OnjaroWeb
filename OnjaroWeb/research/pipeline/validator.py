@@ -86,6 +86,12 @@ class ResearchValidator:
         if not title or len(title) < 2:
             return "Title missing or too short"
 
+        # 4. Person-specific validation: reject headlines as person names
+        if self._is_person_schema(schema_cls):
+            rejection = self._validate_person_name(title, data)
+            if rejection:
+                return rejection
+
         # content should be present (list of paragraphs or text)
         content = data.get("content", [])
         if isinstance(content, list) and len(content) == 0:
@@ -96,3 +102,46 @@ class ResearchValidator:
             return "Content too short"
 
         return None  # Valid
+
+    def _is_person_schema(self, schema_cls) -> bool:
+        """Check if schema is for a person entity."""
+        if not schema_cls:
+            return False
+        name = schema_cls.__name__.lower()
+        return "person" in name
+
+    def _validate_person_name(self, title: str, data: dict) -> str:
+        """Validate that a person 'title' field is an actual person name,
+        not a news headline or sentence.
+
+        A valid person name should:
+        - Have 2-5 words (Hungarian/European names)
+        - Not contain verbs or sentence-like patterns
+        - Not be excessively long
+        """
+        words = title.strip().split()
+
+        # Person name should be 2-5 words max
+        if len(words) > 6:
+            return f"Person name too long ({len(words)} words), likely a headline: '{title[:60]}'"
+
+        # Should not be a sentence (contain common Hungarian verbs/articles)
+        _SENTENCE_MARKERS = {
+            "a", "az", "egy", "és", "vagy", "hogy", "volt", "lett", "van",
+            "lesz", "nem", "sem", "is", "már", "még", "meg", "el", "ki",
+            "be", "fel", "le", "át", "itt", "ott", "ezt", "azt", "aki",
+            "ami", "ahol", "mint", "több", "új", "nagy", "magyar",
+            "amely", "alapítottak", "megalakult", "megnyitott", "bezárt",
+            "eladott", "felvásárolt", "bejelentette", "szervezetek",
+        }
+        lower_words = {w.lower().rstrip(".,;:!?") for w in words}
+        sentence_overlap = lower_words & _SENTENCE_MARKERS
+        if len(sentence_overlap) >= 2:
+            return f"Person name appears to be a sentence (markers: {sentence_overlap}): '{title[:60]}'"
+
+        # Name should contain at least one capital letter at the start of a word
+        has_capital = any(w[0].isupper() for w in words if w)
+        if not has_capital:
+            return f"Person name has no capitalized words: '{title[:60]}'"
+
+        return None
