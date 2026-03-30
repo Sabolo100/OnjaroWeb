@@ -57,7 +57,16 @@ _ENRICHABLE = {
 SKELETON_THRESHOLD = 0.45
 
 # Prompt specifically for finding managed/developed buildings
+# Role definitions:
+#   am = asset management (befektetés kezelés, portfólió tulajdonos, alapkezelő, fejlesztő)
+#   pm = property management (bérlői kapcsolatok, bérleti díj kezelés, irodaház üzemeltetés irányítás)
+#   fm = facility management (műszaki üzemeltetés, takarítás, karbantartás)
 _BUILDINGS_PROMPT = """Adj strukturált JSON adatokat a következő magyar ingatlanpiaci cég épületeiről: "{company}"
+
+A szerepkörök:
+- "am" = asset management: az ingatlan tulajdonosa, befektetője, fejlesztője vagy alapkezelője
+- "pm" = property management: bérlői kapcsolatok, bérleti díj, property manager
+- "fm" = facility management: műszaki üzemeltetés, takarítás, karbantartás
 
 Keress minden elérhető forrásból (weboldal, cikkek, portfólió) és adj vissza JSON-t:
 {{
@@ -68,9 +77,7 @@ Keress minden elérhető forrásból (weboldal, cikkek, portfólió) és adj vis
       "city": "Budapest" vagy más város,
       "address": "cím vagy null",
       "total_area_sqm": terület négyzetméterben (szám) vagy null,
-      "developer_company": "fejlesztő cég neve vagy null",
-      "owner_company": "tulajdonos cég neve vagy null",
-      "role": "fm" vagy "pm" vagy "am" vagy "developer" vagy "owner"
+      "role": "am" vagy "pm" vagy "fm"
     }}
   ]
 }}
@@ -166,7 +173,9 @@ def _link_building_to_company(client, building_id: str, company_id: str,
     except Exception:
         pass
 
-    bm_role = role if role in ("fm", "pm", "am") else "pm"
+    # role must be one of fm/pm/am — default to "am" (not "pm") since most
+    # enriched skeleton companies are developers / asset managers
+    bm_role = role if role in ("fm", "pm", "am") else "am"
     now = datetime.now(timezone.utc).isoformat()
     try:
         client.table("building_management").insert({
@@ -490,18 +499,39 @@ def main():
         if managed and args.mode != "enrich":
             # managed can be list of strings or list of dicts
             logger.info("  Found %d managed properties", len(managed))
+
+            # Determine the company's primary service role for fallback
+            # AM companies default to "am", FM companies to "fm", PM to "pm"
+            company_svcs = company.get("service_types") or []
+            if not company_svcs:
+                # Fetch fresh from DB (may have been updated in this run)
+                try:
+                    _r = client.table("companies").select("service_types").eq(
+                        "id", cid).execute()
+                    company_svcs = (_r.data[0].get("service_types") or []) if _r.data else []
+                except Exception:
+                    pass
+            if "am" in company_svcs:
+                company_default_role = "am"
+            elif "fm" in company_svcs:
+                company_default_role = "fm"
+            elif "pm" in company_svcs:
+                company_default_role = "pm"
+            else:
+                company_default_role = "am"  # developer/investor companies default to am
+
             for bldg_raw in managed:
                 if isinstance(bldg_raw, str):
-                    bldg_raw = {"name": bldg_raw, "role": "pm"}
+                    bldg_raw = {"name": bldg_raw, "role": company_default_role}
                 bldg_name = bldg_raw.get("name") or ""
                 if not bldg_name:
                     continue
                 logger.info("  Processing building: '%s'", bldg_name)
                 bid = _get_or_create_building(client, bldg_raw, cid, name, args.dry_run)
                 if bid:
-                    role = (bldg_raw.get("role") or "pm").lower()
+                    role = (bldg_raw.get("role") or company_default_role).lower()
                     if role not in ("fm", "pm", "am"):
-                        role = "pm"
+                        role = company_default_role
                     _link_building_to_company(client, bid, cid, role, args.dry_run)
                     total_buildings += 1
 
