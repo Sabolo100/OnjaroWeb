@@ -17,6 +17,7 @@ import json
 import argparse
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -54,6 +55,132 @@ _ENRICHABLE = {
 }
 
 SKELETON_THRESHOLD = 0.45
+
+# Prompt specifically for finding managed/developed buildings
+_BUILDINGS_PROMPT = """Adj strukturált JSON adatokat a következő magyar ingatlanpiaci cég épületeiről: "{company}"
+
+Keress minden elérhető forrásból (weboldal, cikkek, portfólió) és adj vissza JSON-t:
+{{
+  "managed_properties": [
+    {{
+      "name": "épület neve",
+      "building_type": "iroda" vagy "raktar" vagy "logisztikai" vagy "vegyes",
+      "city": "Budapest" vagy más város,
+      "address": "cím vagy null",
+      "total_area_sqm": terület négyzetméterben (szám) vagy null,
+      "developer_company": "fejlesztő cég neve vagy null",
+      "owner_company": "tulajdonos cég neve vagy null",
+      "role": "fm" vagy "pm" vagy "am" vagy "developer" vagy "owner"
+    }}
+  ]
+}}
+
+Csak épületeket listázz, ne embereket vagy cégeket. Ha nem találsz épületet, adj vissza {{"managed_properties": []}}. Csak JSON-t adj vissza."""
+
+
+def _get_or_create_building(client, bldg: dict, company_id: str,
+                             company_name: str, dry_run: bool) -> Optional[str]:
+    """Find an existing building or create a stub. Returns building id or None."""
+    name = (bldg.get("name") or "").strip()
+    if not name or len(name) < 3:
+        return None
+
+    # Check if already exists
+    try:
+        resp = client.table("buildings").select("id,name").execute()
+        existing = resp.data or []
+        name_lower = name.lower()
+        for b in existing:
+            if b["name"].lower() == name_lower:
+                logger.info("    Building already exists: '%s' (%s)", name, b["id"][:12])
+                return b["id"]
+            # Substring match to catch e.g. "Váci Greens D" matching "Váci Greens"
+            if name_lower in b["name"].lower() or b["name"].lower() in name_lower:
+                if len(name_lower) > 5 and abs(len(name_lower) - len(b["name"].lower())) < 10:
+                    logger.info("    Building close match: '%s' ≈ '%s' (%s)",
+                                name, b["name"], b["id"][:12])
+                    return b["id"]
+    except Exception as e:
+        logger.warning("    Building lookup failed: %s", e)
+
+    if dry_run:
+        logger.info("    [DRY RUN] Would create building: '%s'", name)
+        return None
+
+    # Create building stub
+    now = datetime.now(timezone.utc).isoformat()
+    building_type = bldg.get("building_type") or "iroda"
+    if building_type not in ("iroda", "raktar", "logisztikai", "vegyes"):
+        building_type = "iroda"
+
+    stub = {
+        "name": name,
+        "building_type": building_type,
+        "city": bldg.get("city") or "Budapest",
+        "address": bldg.get("address"),
+        "total_area_sqm": bldg.get("total_area_sqm"),
+        "confidence": 0.4,
+        "source_urls": [],
+        "created_at": now,
+        "updated_at": now,
+        "first_seen_at": now,
+        "last_confirmed_at": now,
+    }
+    # Remove None values
+    stub = {k: v for k, v in stub.items() if v is not None}
+
+    # Set developer/owner if role matches
+    role = (bldg.get("role") or "").lower()
+    if role == "developer":
+        stub["developer_company_id"] = company_id
+    elif role == "owner":
+        stub["owner_company_id"] = company_id
+
+    try:
+        ins_resp = client.table("buildings").insert(stub).execute()
+        if ins_resp.data:
+            new_id = ins_resp.data[0]["id"]
+            logger.info("    ✓ Created building: '%s' (%s)", name, new_id[:12])
+            return new_id
+        return None
+    except Exception as e:
+        logger.error("    Building insert failed for '%s': %s", name, e)
+        return None
+
+
+def _link_building_to_company(client, building_id: str, company_id: str,
+                               role: str, dry_run: bool):
+    """Create a building_management record linking building to company."""
+    if dry_run:
+        logger.info("    [DRY RUN] Would link building %s → company %s (%s)",
+                    building_id[:12], company_id[:12], role)
+        return
+
+    # Check if link already exists
+    try:
+        resp = client.table("building_management").select("id").eq(
+            "building_id", building_id).eq("company_id", company_id).execute()
+        if resp.data:
+            logger.info("    Building-company link already exists")
+            return
+    except Exception:
+        pass
+
+    bm_role = role if role in ("fm", "pm", "am") else "pm"
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        client.table("building_management").insert({
+            "building_id": building_id,
+            "company_id": company_id,
+            "role": bm_role,
+            "confidence": 0.4,
+            "source_urls": [],
+            "created_at": now,
+            "updated_at": now,
+        }).execute()
+        logger.info("    ✓ Linked building → company (%s)", bm_role)
+    except Exception as e:
+        logger.error("    Building-management link failed: %s", e)
 
 
 def get_skeleton_companies(client, name_filter: str = None):
@@ -101,9 +228,10 @@ Keress minden elérhető forrásból (weboldal, cikkek, LinkedIn, cégadatbázis
 Ha valamit nem tudsz biztosan, hagyd null-ra. Csak JSON-t adj vissza, semmi mást."""
 
 
-def query_company_direct(connector, company_name: str) -> dict:
+def query_company_direct(connector, company_name: str, prompt_template: str = None) -> dict:
     """Ask Perplexity directly for structured company data (no web scraping)."""
-    prompt = _DIRECT_PROMPT.format(company=company_name)
+    template = prompt_template or _DIRECT_PROMPT
+    prompt = template.format(company=company_name)
     logger.info("  Direct query for: %s", company_name)
 
     try:
@@ -228,6 +356,9 @@ def main():
                         help="Filter to a specific company name (substring match)")
     parser.add_argument("--max", type=int, default=0,
                         help="Max companies to process (0 = all)")
+    parser.add_argument("--mode", type=str, default="enrich",
+                        choices=["enrich", "buildings", "all"],
+                        help="enrich=fill empty fields, buildings=find managed properties, all=both")
     args = parser.parse_args()
 
     # ── Setup ──
@@ -254,22 +385,36 @@ def main():
     import uuid
     run_id = f"enrich_{uuid.uuid4().hex[:8]}"
 
-    # ── Find skeleton companies ──
-    companies = get_skeleton_companies(client, args.company)
+    # ── Find companies to process ──
+    if args.mode in ("enrich", "all"):
+        companies = get_skeleton_companies(client, args.company)
+    else:
+        # buildings mode: process all companies (or filtered by name)
+        resp = client.table("companies").select(
+            "id,name,confidence,description,website,service_types"
+        ).execute()
+        companies = resp.data or []
+        if args.company:
+            companies = [c for c in companies
+                         if args.company.lower() in c["name"].lower()]
+
     if not companies:
-        logger.info("No skeleton companies found — nothing to do.")
+        logger.info("No companies found — nothing to do.")
         return
 
     if args.max > 0:
         companies = companies[:args.max]
 
+    mode_label = {"enrich": "Enriching skeleton", "buildings": "Finding buildings for",
+                  "all": "Full enrichment of"}.get(args.mode, "Processing")
     logger.info("=" * 60)
-    logger.info("Enriching %d skeleton companies (run_id=%s, dry_run=%s)",
-                len(companies), run_id, args.dry_run)
+    logger.info("%s %d companies (run_id=%s, dry_run=%s)",
+                mode_label, len(companies), run_id, args.dry_run)
     logger.info("=" * 60)
 
     total_updated = 0
     total_people = 0
+    total_buildings = 0
 
     for i, company in enumerate(companies, 1):
         cid = company["id"]
@@ -277,7 +422,10 @@ def main():
         logger.info("\n[%d/%d] %s (%s)", i, len(companies), name, cid[:12])
 
         # Direct structured query — bypasses FM-specific extraction prompt
-        raw = query_company_direct(connector, name)
+        if args.mode == "buildings":
+            raw = query_company_direct(connector, name, _BUILDINGS_PROMPT)
+        else:
+            raw = query_company_direct(connector, name)
         if not raw:
             logger.info("  No data returned for '%s'", name)
             continue
@@ -339,9 +487,23 @@ def main():
 
         # Handle managed_properties — search/create building stubs
         managed = raw.get("managed_properties") or []
-        if managed:
-            logger.info("  Found %d managed properties: %s",
-                        len(managed), ", ".join(managed[:5]))
+        if managed and args.mode != "enrich":
+            # managed can be list of strings or list of dicts
+            logger.info("  Found %d managed properties", len(managed))
+            for bldg_raw in managed:
+                if isinstance(bldg_raw, str):
+                    bldg_raw = {"name": bldg_raw, "role": "pm"}
+                bldg_name = bldg_raw.get("name") or ""
+                if not bldg_name:
+                    continue
+                logger.info("  Processing building: '%s'", bldg_name)
+                bid = _get_or_create_building(client, bldg_raw, cid, name, args.dry_run)
+                if bid:
+                    role = (bldg_raw.get("role") or "pm").lower()
+                    if role not in ("fm", "pm", "am"):
+                        role = "pm"
+                    _link_building_to_company(client, bid, cid, role, args.dry_run)
+                    total_buildings += 1
 
         # Handle key_people
         key_people = raw.get("key_people") or []
@@ -365,8 +527,8 @@ def main():
 
     # ── Summary ──
     logger.info("\n" + "=" * 60)
-    logger.info("Done: %d/%d companies updated, %d people processed",
-                total_updated, len(companies), total_people)
+    logger.info("Done: %d/%d companies updated, %d people, %d buildings",
+                total_updated, len(companies), total_people, total_buildings)
     if args.dry_run:
         logger.info("(DRY RUN — no changes were written)")
 
