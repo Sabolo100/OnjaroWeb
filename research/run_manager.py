@@ -333,7 +333,7 @@ class ResearchRunManager:
         logger.info("Company enrichment: researching '%s' (%s)", company_name, company_id[:12])
 
         # Fetch raw findings
-        self.repo.create_research_item_log(run_id, item_id, item.get("name", ""))
+        self.repo.create_research_item_log(run_id, item_id)
         self.repo.update_research_item_log(run_id, item_id, status="running", phase="FETCHING")
 
         raw_findings = self._fetcher.fetch(run_id, item)

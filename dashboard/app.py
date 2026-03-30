@@ -19,6 +19,76 @@ def set_next_run_at(dt: datetime):
     next_run_at = dt
 
 
+def _force_persist_candidate(review_id: int,
+                              research_repo: ResearchRepository) -> bool:
+    """Persist a review-queue candidate as a new entity.
+
+    Called when a user rejects a duplicate suggestion, meaning the candidate
+    is genuinely a *different* entity and should be saved to Supabase.
+
+    Returns True if persisted successfully, False otherwise.
+    """
+    import json
+    import sqlite3
+    from db.connection import get_connection
+    from research.config_loader import ProjectConfig
+    from research.pipeline.persister import ResearchPersister
+    from research.models import ExtractionCandidate
+
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT rq.candidate_id, rq.run_id,
+                  ec.extracted_data, ec.confidence, ec.item_id, ec.finding_id
+           FROM review_queue rq
+           JOIN extraction_candidates ec ON rq.candidate_id = ec.candidate_id
+           WHERE rq.review_id = ?""",
+        (review_id,),
+    ).fetchone()
+
+    if not row:
+        return False
+
+    candidate_id = row["candidate_id"]
+    run_id = row["run_id"]
+    item_id = row["item_id"]
+    extracted_data = json.loads(row["extracted_data"]) if row["extracted_data"] else {}
+    confidence = row["confidence"] or 0.5
+
+    # Load the item config to know target_table etc.
+    config = ProjectConfig()
+    items = config.load_items()
+    item = next((i for i in items if i.get("id") == item_id), None)
+    if not item:
+        # Fallback: infer target_table from item_id naming convention
+        if "people" in item_id or "person" in item_id:
+            target_table = "people"
+        elif "building" in item_id:
+            target_table = "buildings"
+        elif "company" in item_id or "enrich" in item_id:
+            target_table = "companies"
+        else:
+            target_table = "companies"
+        item = {"id": item_id, "target_table": target_table,
+                "schema_name": target_table.rstrip("s"),
+                "min_confidence": 0.4, "auto_approve_above": 0.9}
+
+    # Remove the duplicate-marker so the persister inserts fresh
+    extracted_data.pop("_update_existing_id", None)
+
+    candidate = ExtractionCandidate(
+        candidate_id=candidate_id,
+        finding_id=row["finding_id"],
+        item_id=item_id,
+        extracted_data=extracted_data,
+        confidence=confidence,
+        status="validated",
+    )
+
+    persister = ResearchPersister(research_repo, config)
+    count = persister.persist(run_id, item, [candidate])
+    return count > 0
+
+
 def create_app(event_bus: EventBus = None, repo: Repository = None,
                research_repo: ResearchRepository = None):
     app = Flask(__name__)
@@ -132,10 +202,28 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
 
     @app.route("/api/research/reviews/<int:review_id>/reject", methods=["POST"])
     def api_reject_review(review_id):
+        """Reject a duplicate suggestion — these are NOT the same entity.
+
+        After marking the review as rejected, we persist the candidate as a
+        brand-new record, since the user confirmed it is distinct from the
+        existing one.
+        """
         notes = request.json.get("notes", "") if request.is_json else ""
         research_repo_instance.resolve_review(review_id, "rejected",
                                               reviewer="manual", review_notes=notes)
-        return jsonify({"status": "rejected", "review_id": review_id})
+
+        # Force-persist the candidate as a new (separate) entity
+        try:
+            persisted = _force_persist_candidate(review_id, research_repo_instance)
+            return jsonify({"status": "rejected", "review_id": review_id,
+                            "created_new": persisted})
+        except Exception as e:
+            import logging
+            logging.getLogger("onjaro.dashboard").warning(
+                "Force-persist after rejection failed for review %d: %s", review_id, e
+            )
+            return jsonify({"status": "rejected", "review_id": review_id,
+                            "created_new": False, "error": str(e)})
 
     # ── Socket.IO ──
 

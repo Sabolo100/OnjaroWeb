@@ -122,6 +122,77 @@ _ACTIVITY_SUFFIXES = [
 ]
 
 
+# Building type words that identify the *type* of building, not its identity.
+# These are stripped before dedup comparison so "Riel irodaház" and
+# "Rhodium irodaház" are not treated as similar just because of the type word.
+# ORDER MATTERS: longest first.
+_BUILDING_TYPE_WORDS = [
+    "logisztikai és ipari park",
+    "logisztikai centrum",
+    "logisztikai központ",
+    "logisztikai park",
+    "ipari és logisztikai park",
+    "ipari park",
+    "business park",
+    "business center",
+    "business centre",
+    "irodapark",
+    "irodaközpont",
+    "irodaház",
+    "office park",
+    "office center",
+    "office centre",
+    "bevásárlóközpont",
+    "raktárcsarnok",
+    "raktár",
+    "logisztikai",
+    "pláza",
+    "plaza",
+    "center",
+    "centre",
+    "park",
+]
+
+
+def normalize_building_name(name: str) -> str:
+    """Normalize a building name for deduplication.
+
+    Strips building type words from the end so that two buildings that only
+    share a generic type word are not falsely matched.
+
+    Examples:
+        "Riel irodaház"           -> "riel"
+        "Rhodium irodaház"        -> "rhodium"
+        "BudaWest Irodaház"       -> "budawest"
+        "Budapest ONE irodaház"   -> "budapest one"
+        "PEPCO Logisztikai Park"  -> "pepco"
+        "Airport City Business Park" -> "airport city"
+    """
+    if not name:
+        return ""
+
+    text = name.strip().lower()
+
+    # Strip building type suffixes at word boundaries, iteratively
+    changed = True
+    while changed:
+        changed = False
+        for btype in _BUILDING_TYPE_WORDS:
+            if text.endswith(btype) and len(text) > len(btype):
+                prefix_end = len(text) - len(btype)
+                if prefix_end > 0 and text[prefix_end - 1] != ' ':
+                    continue  # part of a compound word, skip
+                candidate_core = text[:prefix_end].rstrip(" .,;-–")
+                if len(candidate_core) >= 2:
+                    text = candidate_core
+                    changed = True
+                    break
+
+    # Normalize whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 def normalize_company_name(name: str) -> str:
     """Normalize a company name for deduplication.
 
@@ -241,6 +312,7 @@ class ResearchDeduplicator:
         db_keys = table_config.get("required_fields", dedupe_policy.unique_keys)
         threshold = dedupe_policy.similarity_threshold
         use_company_normalization = (target_table == "companies")
+        use_building_normalization = (target_table == "buildings")
 
         # Build reverse field mapping: DB column -> extraction field name
         # e.g. {"name": "title"} so we can find "title" in extraction data
@@ -255,6 +327,7 @@ class ResearchDeduplicator:
         candidates, intra_skipped = self._intra_batch_dedupe(
             run_id, candidates, db_keys, threshold, use_company_normalization,
             reverse_mapping=reverse_mapping,
+            use_building_normalization=use_building_normalization,
         )
 
         # Fetch existing records from Supabase
@@ -268,6 +341,8 @@ class ResearchDeduplicator:
                 raw = str(record.get(key, ""))
                 if use_company_normalization and key == "name":
                     norm[key] = normalize_company_name(raw)
+                elif use_building_normalization and key == "name":
+                    norm[key] = normalize_building_name(raw)
                 else:
                     norm[key] = raw.lower().strip()
             existing_normalized.append((record, norm))
@@ -282,6 +357,7 @@ class ResearchDeduplicator:
                 db_keys, use_company_normalization,
                 reverse_mapping=reverse_mapping,
                 target_table=target_table,
+                use_building_normalization=use_building_normalization,
             )
 
             if action == "new":
@@ -328,6 +404,7 @@ class ResearchDeduplicator:
         db_keys: list, threshold: float,
         use_company_normalization: bool,
         reverse_mapping: dict = None,
+        use_building_normalization: bool = False,
     ) -> Tuple[List[ExtractionCandidate], int]:
         """Remove duplicates within the current batch of candidates."""
         if len(candidates) <= 1:
@@ -345,6 +422,8 @@ class ResearchDeduplicator:
                 raw = self._get_extraction_value(data, key, reverse_mapping)
                 if use_company_normalization and key == "name":
                     candidate_norms[key] = normalize_company_name(raw)
+                elif use_building_normalization and key == "name":
+                    candidate_norms[key] = normalize_building_name(raw)
                 else:
                     candidate_norms[key] = raw.lower().strip()
 
@@ -414,7 +493,8 @@ class ResearchDeduplicator:
                          db_keys: list,
                          use_company_normalization: bool,
                          reverse_mapping: dict = None,
-                         target_table: str = "") -> Tuple[str, str]:
+                         target_table: str = "",
+                         use_building_normalization: bool = False) -> Tuple[str, str]:
         """Check a single candidate against existing DB records.
 
         Returns: (action, reason)
@@ -432,6 +512,8 @@ class ResearchDeduplicator:
             raw = self._get_extraction_value(data, key, reverse_mapping)
             if use_company_normalization and key == "name":
                 candidate_norms[key] = normalize_company_name(raw)
+            elif use_building_normalization and key == "name":
+                candidate_norms[key] = normalize_building_name(raw)
             else:
                 candidate_norms[key] = raw.lower().strip()
 
