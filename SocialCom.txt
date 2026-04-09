@@ -1,0 +1,332 @@
+ 
+ONJARO APP – KOMMUNIKÁCIÓS OUTPUT MODUL
+Az Onjaro keretrendszer eredeti célja az volt, hogy egy közel teljesen önjáró szoftveres ökoszisztéma jöjjön létre. Olyan rendszer, amely nemcsak kutat, frissít és fejleszt, hanem a saját változásait önállóan kommunikálni is tudja a külvilág felé.
+A keretrendszer már rendelkezik kutatási és tartalomfrissítési logikával, valamint képes a webapp funkcionális továbbfejlesztésére is. A következő nagy lépés egy olyan kommunikációs output modul kialakítása, amely a rendszerben történt frissítésekből automatikusan kommunikációs anyagokat hoz létre, majd ezeket a beállított csatornákon publikálja vagy kiküldi.
+Figyelj rá, hogy a fejelsztés során ne sérüljön a mostani, működő kód.
+
+A MODUL CÉLJA
+A modul célja, hogy minden fontos tartalmi vagy funkcionális változás után a rendszer ne álljon meg a frissítésnél, hanem automatikusan létrehozza annak kommunikációs leképezését is. Így a webapp fejlődése nem marad belső esemény, hanem azonnal megjelenik a megfelelő marketing- és kommunikációs csatornákon.
+Ez azt jelenti, hogy amikor például az FMintel webappban:
+	•	új ingatlan kerül be,
+	•	új céges vagy személyes adat jelenik meg,
+	•	javul egy keresési funkció,
+	•	új nézet vagy dashboard elem készül,
+	•	új adatkapcsolat vagy szűrési logika jelenik meg,
+akkor a rendszer ezekből a változásokból kommunikálható eseményt képez, majd ebből automatikusan elkészíti a megfelelő csatornaspecifikus tartalmakat.
+
+ALAPELV
+A modul alapelve az, hogy a rendszer minden jelentős változást először kommunikációs eseménnyé alakít. Ez a kommunikációs esemény egy strukturált rekordként bekerül egy erre szolgáló kommunikációs táblába, és innen indul tovább a teljes generálási, jóváhagyási, publikálási és naplózási folyamat.
+A kommunikáció tehát nem közvetlenül a frissítésből történik, hanem egy köztes, kontrollálható rétegen keresztül. Ez azért fontos, mert így:
+	•	visszakövethető, miből milyen kommunikáció készült,
+	•	több csatornára eltérő verziók generálhatók,
+	•	bevezethető admin jóváhagyás vagy részleges automatizmus,
+	•	a rendszer később új csatornákkal is bővíthető.
+
+A MODUL MŰKÖDÉSI FOLYAMATA
+A folyamat lényege, hogy a már meglévő research- és update-modulok ne csak adatot vagy funkciót frissítsenek, hanem kommunikációs inputot is előállítsanak. Ebből a kommunikációs inputból épül fel az output pipeline.
+1. Frissítés történik a rendszerben
+A webapp valamelyik alrendszere új tartalmat hoz létre vagy meglévő funkciót módosít.
+Példák:
+	•	új adatbázis rekordok jöttek létre,
+	•	változott egy céghez kapcsolódó információ,
+	•	új dashboard funkció jelent meg,
+	•	új szűrés, keresés, riport vagy automatikus elemzés került be.
+2. A frissítés kommunikációs eseménnyé alakul
+A rendszer eldönti, hogy az adott változás kommunikálható-e, és ha igen, milyen szinten.
+Lehetséges kommunikációs eseménytípusok:
+	•	tartalmi frissítés,
+	•	funkcionális fejlesztés,
+	•	új feature bevezetése,
+	•	adatbázisbővülés,
+	•	mérföldkő elérés,
+	•	heti vagy havi összefoglaló,
+	•	új kategória vagy adatforrás bekötése,
+	•	minőségi javulás vagy rendszerfejlesztés.
+3. Létrejön egy rekord a kommunikációs táblában
+A rekord tartalmazza:
+	•	mi történt,
+	•	melyik appban történt,
+	•	mikor történt,
+	•	milyen kommunikációs prioritású az esemény,
+	•	mely csatornákon kommunikálható,
+	•	automatikus vagy jóváhagyásos módon mehet-e ki.
+4. A rendszer tartalmat generál csatornánként
+A központi eseményből a rendszer külön tartalmat készít az egyes csatornákra, azok saját logikája szerint.
+Itt nem ugyanaz a szöveg másolódik mindenhová, hanem:
+	•	LinkedInre szakmaibb, business jellegű poszt,
+	•	Mailchimphez EDM szöveg és tárgymező,
+	•	Facebookra könnyebben befogadható, rövidebb poszt,
+	•	Instagramra vizuális fókuszú caption,
+	•	TikTokhoz rövid videóötlet és leírás,
+	•	Google Adshez headline, description és kreatív brief,
+	•	YouTube-hoz videó brief, cím, leírás,
+	•	WhatsApp / Telegram / Viber csatornákra rövid üzenet.
+5. Publikálás vagy kiküldés
+Az admin által előre beállított szabályok alapján a rendszer:
+	•	azonnal publikál,
+	•	tervezett időpontra ütemez,
+	•	vagy jóváhagyásra vár.
+6. Teljes naplózás és visszanézhetőség
+Minden kimenő anyag visszakereshető a dashboardon:
+	•	mikor készült,
+	•	melyik frissítésből született,
+	•	melyik csatornára ment ki,
+	•	sikeresen ment-e ki,
+	•	milyen kreatív és szöveg készült,
+	•	volt-e hiba vagy újrapróbálás.
+
+TÁMOGATOTT OUTPUT CSATORNÁK
+A rendszer eleve többcsatornás kommunikációra készül. Az FMintel az első konkrét webapp, de a kommunikációs modul nem ehhez az egy rendszerhez kötődik, hanem a teljes Onjaro framework része.
+Első körben támogatott csatornák
+	•	LinkedIn poszt generálás és publikálás
+	•	Mailchimp kampányszöveg generálás és kampányindítás meglévő listára
+	•	közvetlen e-mail kiküldés
+	•	Facebook poszt generálás és publikálás
+Később bővíthető csatornák
+	•	Instagram poszt/caption generálás és publikálás
+	•	TikTok poszt vagy videóleírás generálás és publikálás
+	•	Google Ads / Adwords kampányindítás szöveges és képi elemekkel
+	•	YouTube videó brief vagy automatikusan generált videós tartalom publikálása
+	•	WhatsApp üzenetküldés
+	•	Telegram üzenetküldés
+	•	Viber üzenetküldés
+	•	X / Twitter
+	•	Reddit
+	•	Medium
+	•	saját blog modul
+	•	push notification
+	•	SMS
+	•	CRM-integrált kampányküldés
+	•	partnerportálok / API feedek
+
+CSATORNASPECIFIKUS TARTALOMLOGIKA
+A rendszer egyik kulcsrésze, hogy minden csatornához külön kommunikációs logikát használjon. Nem elég egyetlen általános szöveget előállítani, mert minden platform más formátumot, hosszt, hangnemet és tartalmi fókuszt kíván.
+Példák csatornaszintű eltérésekre
+	•	LinkedIn: üzleti, szakmai, gondolatébresztő hangvétel, erős headline, rövid magyarázó szöveg, CTA.
+	•	Mailchimp / EDM: tárgymező, preview text, fő blokk, alcímek, CTA, esetleges képi javaslat.
+	•	Facebook: emberközelibb és kevésbé formális poszt, könnyebben fogyasztható felütéssel.
+	•	Instagram: vizuális fókusz, rövidebb caption, hashtag-javaslatok, kreatív brief.
+	•	TikTok: rövid, erős nyitás, videós storyline, képi sorrend, feliratjavaslat.
+	•	Google Ads: karakterlimites headline-ok, description-ök, kampánycél szerinti variációk.
+	•	YouTube: videócím, leírás, rövid script, shotlist vagy generatív videó brief.
+	•	Messenger típusú csatornák: tömör, gyorsan befogadható szöveg, linkkel.
+
+AUTOMATIZMUSI SZINTEK
+Nem minden kommunikáció mehet ki teljesen automatikusan. Ezért a rendszernek több működési módot kell tudnia.
+Lehetséges módok
+	•	Teljes automata mód A rendszer generál és publikál emberi beavatkozás nélkül.
+	•	Admin jóváhagyásos mód A rendszer elkészíti az anyagokat, de publikálás előtt admin ellenőrzés szükséges.
+	•	Vegyes mód Egyes csatornák teljesen automatikusak, mások jóváhagyást igényelnek.
+	•	Csak draft mód A rendszer elkészíti az anyagokat, de nem küldi ki, csak elmenti őket felhasználásra.
+Ez azért fontos, mert például egy LinkedIn vagy Mailchimp kampány lehet érzékenyebb, mint egy belső Telegram értesítés.
+
+JOGOSULTSÁGOK ÉS INTEGRÁCIÓK
+A különböző csatornák használatához a usernek vagy adminnak meg kell adnia a szükséges hozzáféréseket. Ezeket a rendszer egy külön beállítási folyamatban kezeli.
+A rendszer minden csatornához:
+	•	megmutatja, milyen jogosultság szükséges,
+	•	végigvezeti a felhasználót az összekapcsoláson,
+	•	eltárolja a hitelesítési adatokat biztonságosan,
+	•	ellenőrzi, hogy a kapcsolat él-e,
+	•	hiba esetén újrahitelesítést kér.
+Példák
+	•	LinkedIn API hozzáférés
+	•	Meta/Facebook/Instagram hozzáférés
+	•	Mailchimp API kulcs és audience/lista beállítás
+	•	Google Ads fiókkapcsolat
+	•	YouTube csatorna jogosultság
+	•	WhatsApp Business integráció
+	•	Telegram bot token
+	•	Viber üzleti üzenetküldési kapcsolat
+	•	SMTP vagy email provider kapcsolat
+
+ADMIN DASHBOARD – ÚJ KOMMUNIKÁCIÓS TAB
+A dashboardban egy új, külön kommunikációs felület jelenik meg. Ez a tab nemcsak a jelenlegi állapotot mutatja, hanem teljes történeti visszanézhetőséget is biztosít.
+A kommunikációs tab fő funkciói
+	•	időrendi lista az összes kommunikációs eseményről
+	•	szűrés csatorna szerint
+	•	szűrés app szerint
+	•	szűrés eseménytípus szerint
+	•	szűrés státusz szerint
+	•	megtekintés: mi volt az eredeti frissítés
+	•	megtekintés: milyen csatornákra milyen tartalom készült
+	•	publikálás ideje
+	•	sikeres / sikertelen kiküldések
+	•	hibaüzenetek
+	•	újraküldés vagy újragenerálás lehetősége
+	•	manuális szerkesztés lehetősége publikálás előtt
+	•	tervezett, függőben lévő és kiment anyagok elkülönítése
+Hasznos plusz nézetek
+	•	naptár nézet az ütemezett kommunikációkról
+	•	csatornánkénti teljesítmény összesítő
+	•	automatizált vs manuálisan jóváhagyott tartalmak aránya
+	•	top frissítéstípusok
+	•	mely eseményekből nem lett kommunikáció
+
+JAVASOLT ADATSTRUKTÚRA – TÁBLA SZINTEN
+Az egész modul akkor lesz stabil, ha az outputok nem ad hoc módon működnek, hanem jól elkülönített táblákra épülnek. Nem szükséges most mély adatbázis-szintű tervezés, de a fő entitások legyenek meg.
+1. apps
+A rendszerben kezelt webappok listája.
+Példák:
+	•	FMintel
+	•	későbbi más appok
+2. update_events
+Minden tartalmi vagy funkcionális frissítés fő naplója.
+Fő mezők:
+	•	app_id
+	•	event_type
+	•	event_title
+	•	event_summary
+	•	source_module
+	•	priority
+	•	created_at
+	•	payload_json
+3. communication_events
+Azok a frissítések, amelyekből kommunikáció készül.
+Fő mezők:
+	•	update_event_id
+	•	app_id
+	•	communication_type
+	•	communication_priority
+	•	auto_publish_allowed
+	•	approval_required
+	•	scheduled_at
+	•	status
+4. channel_configs
+Az egyes kommunikációs csatornák technikai és üzleti beállításai.
+Fő mezők:
+	•	app_id
+	•	channel_name
+	•	is_enabled
+	•	auth_status
+	•	account_reference
+	•	default_mode
+	•	posting_rules_json
+5. channel_templates
+Csatornaspecifikus promptok, tone-of-voice szabályok és formátumok.
+Fő mezők:
+	•	channel_name
+	•	content_type
+	•	tone
+	•	prompt_template
+	•	character_limits
+	•	asset_requirements
+6. generated_outputs
+A rendszer által legenerált konkrét kommunikációs anyagok.
+Fő mezők:
+	•	communication_event_id
+	•	channel_name
+	•	generated_title
+	•	generated_body
+	•	generated_assets_json
+	•	cta
+	•	status
+	•	generated_at
+7. publishing_jobs
+A tényleges publikálási vagy küldési feladatok.
+Fő mezők:
+	•	generated_output_id
+	•	channel_name
+	•	scheduled_at
+	•	published_at
+	•	publish_status
+	•	external_reference_id
+	•	retry_count
+	•	error_message
+8. communication_assets
+Az egyes outputokhoz tartozó képek, videók, kreatív fájlok.
+Fő mezők:
+	•	generated_output_id
+	•	asset_type
+	•	asset_url
+	•	asset_status
+	•	prompt_used
+	•	version
+9. approval_queue
+Azok az anyagok, amelyek admin jóváhagyást igényelnek.
+Fő mezők:
+	•	generated_output_id
+	•	approver_user_id
+	•	approval_status
+	•	reviewed_at
+	•	review_note
+10. channel_performance
+Későbbi analitikához szükséges teljesítményadatok.
+Fő mezők:
+	•	generated_output_id
+	•	channel_name
+	•	impressions
+	•	clicks
+	•	opens
+	•	ctr
+	•	engagement
+	•	conversions
+
+TARTALOMGENERÁLÁSI LOGIKA
+A kommunikációs modulnak nem pusztán szöveget kell gyártania, hanem értenie kell, hogy mi történt a rendszerben, és abból milyen típusú kommunikációt érdemes készíteni. Vagyis szükség van egy belső „értelmező” rétegre is.
+A generálás lépései
+	•	a rendszer kiolvassa a frissítés lényegét
+	•	meghatározza a kommunikációs szöget
+	•	kiválasztja a releváns csatornákat
+	•	csatornánként külön prompttal dolgozik
+	•	létrehozza a szöveges outputot
+	•	ahol kell, képi vagy videós briefet is generál
+	•	publikálható formára alakítja az anyagot
+Például
+Ha az FMintelben új, strukturáltabb cégadat-nézet jött létre, akkor:
+	•	LinkedInre mehet egy szakmai poszt arról, hogy pontosabb és gyorsabban átlátható céges információk kerültek be,
+	•	Mailchimpben mehet erről egy termékfrissítési blokk,
+	•	Facebookra mehet egy egyszerűbb bemutató poszt,
+	•	YouTube-ra készülhet rövid demo videó brief,
+	•	Google Adshez készülhet egy új feature-re fókuszáló kampányváltozat.
+
+KÉPI ÉS VIDEÓS OUTPUTOK 
+A kommunikációs modul akkor igazán erős, ha nemcsak szöveget kezel, hanem vizuális tartalmat is. Ez különösen fontos Instagram, TikTok, YouTube és hirdetési csatornák esetén.
+A rendszer képes lehet
+	•	automatikus képi brief generálásra
+	•	képgenerálás indítására
+	•	meglévő screenshotok vagy UI képek felhasználására
+	•	feature-frissítésből rövid videó storyboard készítésére
+	•	YouTube/TikTok rövid videós script létrehozására
+	•	thumbnail, hirdetési kreatív vagy carousel ötletek generálására
+
+ÜTEMEZÉS ÉS SZABÁLYRENDSZER
+Nem minden frissítést kell azonnal kommunikálni. Bizonyos esetekben jobb napi, heti vagy tematikus összefoglalót készíteni, mint minden eseményről külön posztot kitenni.
+Ezért a rendszernek tudnia kell
+	•	azonnali kommunikációt,
+	•	napi digestet,
+	•	heti összefoglalót,
+	•	kampányba rendezett kommunikációt,
+	•	csatornánként eltérő publikálási ritmust.
+Példák
+	•	kisebb adatfrissítések heti összefoglalóba kerülnek,
+	•	új feature azonnal kimegy LinkedInre,
+	•	Mailchimp kampány csak heti egyszer indul,
+	•	messenger-csatornákra azonnali rövid értesítés mehet.
+
+HIBAKEZELÉS ÉS BIZTONSÁG
+Mivel a rendszer külső platformokra publikál, kötelező a megbízható hiba- és jogosultságkezelés. Enélkül könnyen előfordulhat, hogy valami részben vagy rossz formában megy ki.
+Szükséges elemek
+	•	sikertelen publikálás naplózása
+	•	újrapróbálási logika
+	•	lejárt tokenek felismerése
+	•	csatornánkénti egészségállapot-ellenőrzés
+	•	rate limit figyelés
+	•	tartalomhossz és formátum ellenőrzés
+	•	tiltott vagy hiányos tartalmak kiszűrése
+	•	admin értesítése hiba esetén
+
+JÖVŐBELI BŐVÍTÉSEK
+A kommunikációs modul hosszabb távon nemcsak publikálhat, hanem tanulhat is a saját eredményeiből. Így a kommunikáció nem statikus kiegészítő lesz, hanem a rendszer önfejlesztő logikájának része.
+Későbbi irányok
+	•	teljesítményadatok alapján jobb szövegek generálása
+	•	A/B verziók automatikus tesztelése
+	•	csatornák közötti prioritás-átalakítás
+	•	engagement alapján újrapromóció
+	•	legjobb headline-ok és CTA-k automatikus újrahasználata
+	•	közönségszegmensekhez igazított kommunikáció
+	•	többnyelvű outputok
+	•	apponként eltérő brand voice kezelése
+
+ÖSSZEFOGLALÓ
+Ez a kommunikációs output modul teszi teljessé az Onjaro keretrendszer eredeti vízióját. A rendszer így már nemcsak kutat, adatot épít be és funkciót fejleszt, hanem a saját fejlődését önállóan kommunikálni is képes lesz.
+A modul lényege, hogy minden jelentős tartalmi vagy funkcionális frissítésből strukturált kommunikációs eseményt hozzon létre, majd ebből csatornaspecifikus tartalmakat generáljon, azokat publikálja vagy kiküldje, végül pedig mindezt teljesen visszakövethető módon naplózza a dashboardban. Az FMintel az első konkrét használati eset, de a modul eleve úgy épül, hogy később más Onjaro-alapú webappokra is rá lehessen kötni.

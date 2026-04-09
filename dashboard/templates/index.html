@@ -50,6 +50,10 @@
                 &#128101; People Research
                 <span class="people-status-dot" id="people-status-dot" style="display:none"></span>
             </button>
+            <button class="tab-btn" data-tab="socialcom" onclick="switchTab('socialcom')">
+                &#128225; Kommunik&aacute;ci&oacute;
+                <span class="people-status-dot" id="socialcom-status-dot" style="display:none"></span>
+            </button>
         </nav>
 
         <!-- Countdown Banner -->
@@ -240,6 +244,51 @@
                     <h2>Live Log</h2>
                     <div class="people-log-container" id="people-log">
                         <div class="empty-state">Waiting for log output...</div>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════ -->
+        <!-- SOCIALCOM TAB -->
+        <!-- ═══════════════════════════════════ -->
+        <div class="tab-content" id="tab-socialcom">
+            <div class="socialcom-grid">
+                <!-- Channel Status -->
+                <section class="panel socialcom-channels-panel">
+                    <h2>&#128225; Csatorn&aacute;k</h2>
+                    <div id="socialcom-channels-content">
+                        <div class="empty-state">Bet&ouml;lt&eacute;s...</div>
+                    </div>
+                </section>
+
+                <!-- Pipeline Stats -->
+                <section class="panel socialcom-stats-panel">
+                    <h2>Pipeline statisztika</h2>
+                    <div id="socialcom-stats-content">
+                        <div class="empty-state">Nincs adat</div>
+                    </div>
+                </section>
+
+                <!-- Recent Outputs -->
+                <section class="panel socialcom-outputs-panel">
+                    <h2>Gener&aacute;lt tartalmak</h2>
+                    <div id="socialcom-outputs-content">
+                        <div class="empty-state">Nincs m&eacute;g gener&aacute;lt tartalom</div>
+                    </div>
+                </section>
+
+                <!-- Run Pipeline -->
+                <section class="panel socialcom-actions-panel">
+                    <h2>Pipeline kezel&eacute;s</h2>
+                    <div id="socialcom-actions-content">
+                        <button class="sc-btn sc-btn-primary" onclick="runSocialcomPipeline(false)">
+                            &#9654; Pipeline futtat&aacute;s
+                        </button>
+                        <button class="sc-btn sc-btn-secondary" onclick="runSocialcomPipeline(true)">
+                            &#128065; Dry run (csak detekt&aacute;l&aacute;s + gener&aacute;l&aacute;s)
+                        </button>
+                        <div id="socialcom-run-status" style="margin-top: 12px;"></div>
                     </div>
                 </section>
             </div>

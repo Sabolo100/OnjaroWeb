@@ -297,6 +297,78 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
             return jsonify({"status": "rejected", "review_id": review_id,
                             "created_new": False, "error": str(e)})
 
+    # ── Socialcom API ──
+
+    @app.route("/api/socialcom/status")
+    def api_socialcom_status():
+        try:
+            from socialcom.scheduler import get_pipeline_status
+            return jsonify(get_pipeline_status())
+        except Exception as e:
+            return jsonify({"error": str(e)})
+
+    @app.route("/api/socialcom/run", methods=["POST"])
+    def api_socialcom_run():
+        dry_run = (request.json or {}).get("dry_run", False)
+
+        def _run():
+            try:
+                from socialcom.scheduler import run_pipeline
+                result = run_pipeline(dry_run=dry_run)
+                socketio.emit("socialcom_complete", result)
+            except Exception as e:
+                import logging
+                logging.getLogger("onjaro.dashboard").error("Socialcom pipeline failed: %s", e)
+                socketio.emit("socialcom_complete", {"error": str(e)})
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return jsonify({"status": "started", "dry_run": dry_run})
+
+    @app.route("/api/socialcom/outputs")
+    def api_socialcom_outputs():
+        try:
+            from research.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if not client:
+                return jsonify([])
+            resp = client.table("comm_outputs").select(
+                "id, title, body, cta, status, published_at, created_at, error_message, "
+                "channel:comm_channels(channel_name, display_name), "
+                "event:comm_events(title, event_type)"
+            ).order("created_at", desc=True).limit(50).execute()
+            return jsonify(resp.data or [])
+        except Exception as e:
+            return jsonify({"error": str(e)})
+
+    @app.route("/api/socialcom/outputs/<output_id>/approve", methods=["POST"])
+    def api_socialcom_approve(output_id):
+        try:
+            from research.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if not client:
+                return jsonify({"error": "No DB"}), 500
+            client.table("comm_outputs").update(
+                {"status": "approved", "updated_at": "now()"}
+            ).eq("id", output_id).execute()
+            return jsonify({"status": "approved", "id": output_id})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/socialcom/outputs/<output_id>/skip", methods=["POST"])
+    def api_socialcom_skip(output_id):
+        try:
+            from research.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if not client:
+                return jsonify({"error": "No DB"}), 500
+            client.table("comm_outputs").update(
+                {"status": "skipped", "updated_at": "now()"}
+            ).eq("id", output_id).execute()
+            return jsonify({"status": "skipped", "id": output_id})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     # ── Socket.IO ──
 
     @socketio.on("connect")

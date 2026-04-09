@@ -298,6 +298,8 @@ def main():
     evo_enabled = EVOLUTION_ENABLED
     res_enabled = RESEARCH_ENABLED
 
+    socialcom_enabled = False
+
     if RUN_ON_STARTUP:
         # Legacy mode: skip launcher, use .env settings directly
         logger.info("RUN_ON_STARTUP=1 — skipping launcher, using .env config")
@@ -317,9 +319,14 @@ def main():
         if res_enabled:
             _apply_research_item_config(research_items)
 
-        logger.info("Evolution: %s, Research: %s (items: %s)",
+        # Socialcom config
+        socialcom_cfg = cfg.get("socialcom", {})
+        socialcom_enabled = socialcom_cfg.get("enabled", False)
+
+        logger.info("Evolution: %s, Research: %s, Socialcom: %s (items: %s)",
                     "ON" if evo_enabled else "OFF",
                     "ON" if res_enabled else "OFF",
+                    "ON" if socialcom_enabled else "OFF",
                     research_items)
 
     # Initialize research pipeline
@@ -346,6 +353,27 @@ def main():
             id="research_cycle",
         )
         logger.info("Research scheduler: every %d min", RESEARCH_RUN_INTERVAL_MINUTES)
+
+    if socialcom_enabled:
+        from socialcom.config import SOCIALCOM_INTERVAL_MINUTES
+
+        def socialcom_cycle():
+            try:
+                from socialcom.scheduler import run_pipeline
+                logger.info("Starting socialcom pipeline cycle...")
+                run_pipeline(dry_run=False)
+            except Exception as e:
+                logger.error("Socialcom cycle failed: %s", e)
+
+        scheduler.add_job(
+            socialcom_cycle,
+            "interval",
+            minutes=SOCIALCOM_INTERVAL_MINUTES,
+            max_instances=1,
+            id="socialcom_cycle",
+        )
+        logger.info("Socialcom scheduler: every %d min", SOCIALCOM_INTERVAL_MINUTES)
+
     scheduler.start()
 
     # Run first cycle immediately
@@ -355,6 +383,9 @@ def main():
     if res_enabled:
         logger.info("Running initial research cycle...")
         threading.Thread(target=research_cycle, daemon=True).start()
+    if socialcom_enabled:
+        logger.info("Running initial socialcom cycle...")
+        threading.Thread(target=socialcom_cycle, daemon=True).start()
 
     # Handle graceful shutdown
     shutdown_requested = threading.Event()

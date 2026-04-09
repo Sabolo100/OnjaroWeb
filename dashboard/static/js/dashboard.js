@@ -394,6 +394,8 @@ function switchTab(tabName) {
         loadResearchData();
     } else if (tabName === 'people') {
         loadPeopleResearchData();
+    } else if (tabName === 'socialcom') {
+        loadSocialcomData();
     }
 }
 
@@ -831,4 +833,173 @@ async function loadPeopleResearchData() {
             }
         }
     } catch(e) {}
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOCIALCOM TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+const SC_STATUS_LABELS = {
+    draft: 'Piszkozat',
+    pending_approval: 'Jóváhagyásra vár',
+    approved: 'Jóváhagyva',
+    scheduled: 'Ütemezve',
+    publishing: 'Publikálás...',
+    published: 'Publikálva',
+    failed: 'Hiba',
+    skipped: 'Kihagyva',
+};
+
+const SC_STATUS_COLORS = {
+    draft: '#94a3b8',
+    pending_approval: '#f59e0b',
+    approved: '#0284c7',
+    scheduled: '#8b5cf6',
+    publishing: '#0284c7',
+    published: '#10b981',
+    failed: '#ef4444',
+    skipped: '#64748b',
+};
+
+socket.on('socialcom_complete', (data) => {
+    const el = document.getElementById('socialcom-run-status');
+    if (el) {
+        if (data.error) {
+            el.innerHTML = `<span style="color:#ef4444">Hiba: ${data.error}</span>`;
+        } else {
+            el.innerHTML = `<span style="color:#10b981">Kész — ${data.events_detected||0} esemény, ${data.outputs_generated||0} tartalom, ${data.outputs_published||0} publikálva</span>`;
+        }
+    }
+    loadSocialcomData();
+});
+
+async function loadSocialcomData() {
+    try {
+        const [status, outputs] = await Promise.all([
+            fetch('/api/socialcom/status').then(r => r.json()),
+            fetch('/api/socialcom/outputs').then(r => r.json()),
+        ]);
+
+        renderSocialcomChannels(status.channels || []);
+        renderSocialcomStats(status);
+        renderSocialcomOutputs(Array.isArray(outputs) ? outputs : []);
+    } catch(e) {
+        console.error('Socialcom data load error:', e);
+    }
+}
+
+function renderSocialcomChannels(channels) {
+    const el = document.getElementById('socialcom-channels-content');
+    if (!el) return;
+    if (!channels.length) {
+        el.innerHTML = '<div class="empty-state">Nincsenek csatornák konfigurálva</div>';
+        return;
+    }
+    el.innerHTML = channels.map(ch => `
+        <div class="sc-channel-card">
+            <div class="sc-channel-header">
+                <span class="sc-channel-dot" style="background:${ch.enabled ? '#10b981' : '#94a3b8'}"></span>
+                <strong>${ch.display_name}</strong>
+                <span class="sc-channel-mode">${ch.mode}</span>
+            </div>
+            <div class="sc-channel-status">${ch.enabled ? 'Aktív' : 'Kikapcsolva'} — ${ch.auth_status || 'nincs konfigurálva'}</div>
+        </div>
+    `).join('');
+}
+
+function renderSocialcomStats(status) {
+    const el = document.getElementById('socialcom-stats-content');
+    if (!el) return;
+    const ec = status.event_counts || {};
+    const oc = status.output_counts || {};
+    el.innerHTML = `
+        <div class="sc-stat-grid">
+            <div class="sc-stat-box">
+                <div class="sc-stat-value">${status.total_events || 0}</div>
+                <div class="sc-stat-label">Események</div>
+            </div>
+            <div class="sc-stat-box">
+                <div class="sc-stat-value">${status.total_outputs || 0}</div>
+                <div class="sc-stat-label">Tartalmak</div>
+            </div>
+            <div class="sc-stat-box">
+                <div class="sc-stat-value" style="color:#10b981">${oc.published || 0}</div>
+                <div class="sc-stat-label">Publikálva</div>
+            </div>
+            <div class="sc-stat-box">
+                <div class="sc-stat-value" style="color:#f59e0b">${oc.pending_approval || 0}</div>
+                <div class="sc-stat-label">Jóváhagyásra vár</div>
+            </div>
+            <div class="sc-stat-box">
+                <div class="sc-stat-value" style="color:#ef4444">${oc.failed || 0}</div>
+                <div class="sc-stat-label">Hibás</div>
+            </div>
+            <div class="sc-stat-box">
+                <div class="sc-stat-value" style="color:#94a3b8">${oc.draft || 0}</div>
+                <div class="sc-stat-label">Piszkozat</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderSocialcomOutputs(outputs) {
+    const el = document.getElementById('socialcom-outputs-content');
+    if (!el) return;
+    if (!outputs.length) {
+        el.innerHTML = '<div class="empty-state">Nincs még generált tartalom</div>';
+        return;
+    }
+    el.innerHTML = outputs.map(o => {
+        const chName = o.channel?.display_name || o.channel?.channel_name || '?';
+        const evTitle = o.event?.title || '';
+        const statusLabel = SC_STATUS_LABELS[o.status] || o.status;
+        const statusColor = SC_STATUS_COLORS[o.status] || '#94a3b8';
+        const canApprove = o.status === 'pending_approval' || o.status === 'draft';
+        const canSkip = o.status !== 'published' && o.status !== 'skipped';
+        return `
+        <div class="sc-output-card">
+            <div class="sc-output-header">
+                <span class="sc-output-channel">${chName}</span>
+                <span class="sc-output-status" style="color:${statusColor}">${statusLabel}</span>
+            </div>
+            <div class="sc-output-event">${evTitle}</div>
+            <div class="sc-output-title">${o.title || ''}</div>
+            <div class="sc-output-body">${(o.body || '').substring(0, 200)}${(o.body||'').length > 200 ? '...' : ''}</div>
+            ${o.error_message ? `<div class="sc-output-error">Hiba: ${o.error_message}</div>` : ''}
+            <div class="sc-output-actions">
+                ${canApprove ? `<button class="sc-btn-sm sc-btn-approve" onclick="socialcomApprove('${o.id}')">Jóváhagy</button>` : ''}
+                ${canSkip ? `<button class="sc-btn-sm sc-btn-skip" onclick="socialcomSkip('${o.id}')">Kihagy</button>` : ''}
+                <span class="sc-output-time">${formatTimeShort(o.created_at)}</span>
+                ${o.published_at ? `<span class="sc-output-time" style="color:#10b981">Pub: ${formatTimeShort(o.published_at)}</span>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function socialcomApprove(id) {
+    try {
+        await fetch(`/api/socialcom/outputs/${id}/approve`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+        loadSocialcomData();
+    } catch(e) { console.error(e); }
+}
+
+async function socialcomSkip(id) {
+    try {
+        await fetch(`/api/socialcom/outputs/${id}/skip`, { method: 'POST', headers: {'Content-Type':'application/json'} });
+        loadSocialcomData();
+    } catch(e) { console.error(e); }
+}
+
+async function runSocialcomPipeline(dryRun) {
+    const el = document.getElementById('socialcom-run-status');
+    if (el) el.innerHTML = '<span style="color:#0284c7">Pipeline fut...</span>';
+    try {
+        await fetch('/api/socialcom/run', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ dry_run: dryRun }),
+        });
+    } catch(e) {
+        if (el) el.innerHTML = `<span style="color:#ef4444">Hiba: ${e}</span>`;
+    }
 }

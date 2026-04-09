@@ -362,6 +362,44 @@
             </div>
         </div>
 
+        <!-- Socialcom -->
+        <div class="launcher-section">
+            <h2>&#128225; Kommunik&aacute;ci&oacute;s Modul</h2>
+
+            <label class="launcher-option" for="toggle-socialcom" onclick="toggleSocialcomChannels(event)">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon" style="background:rgba(245,158,11,0.1);color:#f59e0b;">&#128225;</div>
+                    <div class="launcher-option-text">
+                        <h3>Automatikus kommunik&aacute;ci&oacute;</h3>
+                        <p>V&aacute;ltoz&aacute;sokb&oacute;l csatornaspecifikus tartalmak gener&aacute;l&aacute;sa &eacute;s publik&aacute;l&aacute;sa</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-socialcom">
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+
+            <div class="sub-options" id="socialcom-channels">
+                <div class="sub-option">
+                    <input type="checkbox" id="sc-linkedin" checked>
+                    <label for="sc-linkedin">LinkedIn (szakmai poszt)</label>
+                </div>
+                <div class="sub-option">
+                    <input type="checkbox" id="sc-mailchimp" checked>
+                    <label for="sc-mailchimp">Mailchimp (h&iacute;rlev&eacute;l kamp&aacute;ny)</label>
+                </div>
+                <div class="sub-option">
+                    <input type="checkbox" id="sc-email" checked>
+                    <label for="sc-email">E-mail (k&ouml;zvetlen &eacute;rtes&iacute;t&eacute;s)</label>
+                </div>
+                <div class="sub-option">
+                    <input type="checkbox" id="sc-facebook" checked>
+                    <label for="sc-facebook">Facebook (poszt)</label>
+                </div>
+            </div>
+        </div>
+
         <!-- RUN -->
         <div class="launcher-run">
             <button class="btn-run" id="btn-run" onclick="launchSystem()">
@@ -388,6 +426,18 @@
             document.getElementById('people-channels').classList.toggle('visible', this.checked);
         });
 
+        function toggleSocialcomChannels(e) {
+            const channels = document.getElementById('socialcom-channels');
+            const toggle = document.getElementById('toggle-socialcom');
+            setTimeout(() => {
+                channels.classList.toggle('visible', toggle.checked);
+            }, 10);
+        }
+
+        document.getElementById('toggle-socialcom').addEventListener('change', function() {
+            document.getElementById('socialcom-channels').classList.toggle('visible', this.checked);
+        });
+
         async function launchSystem() {
             const btn = document.getElementById('btn-run');
             const status = document.getElementById('launcher-status');
@@ -411,6 +461,15 @@
                         website: document.getElementById('ch-website').checked,
                         search: document.getElementById('ch-search').checked,
                         conference: document.getElementById('ch-conference').checked,
+                    },
+                },
+                socialcom: {
+                    enabled: document.getElementById('toggle-socialcom').checked,
+                    channels: {
+                        linkedin: document.getElementById('sc-linkedin').checked,
+                        mailchimp: document.getElementById('sc-mailchimp').checked,
+                        email: document.getElementById('sc-email').checked,
+                        facebook: document.getElementById('sc-facebook').checked,
                     },
                 },
             };

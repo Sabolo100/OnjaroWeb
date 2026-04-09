@@ -973,6 +973,148 @@ body {
     background: var(--accent-cyan);
 }
 
+/* ── Socialcom Tab ─────────────────────────────────────────────── */
+
+.socialcom-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+}
+
+.socialcom-grid .socialcom-outputs-panel {
+    grid-column: 1 / 3;
+}
+
+.sc-channel-card {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+.sc-channel-card:last-child { border-bottom: none; }
+
+.sc-channel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sc-channel-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.sc-channel-mode {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg-primary);
+    padding: 2px 8px;
+    border-radius: 8px;
+}
+.sc-channel-status {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    padding-left: 16px;
+}
+
+.sc-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+.sc-stat-box {
+    text-align: center;
+    padding: 12px 8px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+}
+.sc-stat-value {
+    font-size: 22px;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+.sc-stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.sc-output-card {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.sc-output-card:last-child { border-bottom: none; }
+.sc-output-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 4px;
+}
+.sc-output-channel {
+    font-size: 11px; font-weight: bold; color: var(--accent-cyan);
+    background: rgba(0,212,255,0.1);
+    padding: 2px 8px; border-radius: 8px;
+}
+.sc-output-status {
+    font-size: 11px; font-weight: bold;
+}
+.sc-output-event {
+    font-size: 11px; color: var(--text-dim); margin-bottom: 4px;
+}
+.sc-output-title {
+    font-size: 13px; font-weight: bold; color: var(--text-primary); margin-bottom: 4px;
+}
+.sc-output-body {
+    font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+    max-height: 80px; overflow: hidden;
+}
+.sc-output-error {
+    font-size: 11px; color: #ef4444; margin-top: 6px;
+}
+.sc-output-actions {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.sc-output-time {
+    font-size: 10px; color: var(--text-dim); margin-left: auto;
+}
+
+.sc-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    transition: opacity 0.2s;
+    display: inline-block;
+    margin-right: 8px;
+}
+.sc-btn:hover { opacity: 0.85; }
+.sc-btn-primary {
+    background: var(--accent-cyan);
+    color: var(--bg-primary);
+}
+.sc-btn-secondary {
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.sc-btn-sm {
+    padding: 4px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: bold;
+    transition: opacity 0.2s;
+}
+.sc-btn-sm:hover { opacity: 0.85; }
+.sc-btn-approve {
+    background: #10b981;
+    color: white;
+}
+.sc-btn-skip {
+    background: var(--bg-primary);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     .grid {
@@ -993,10 +1135,16 @@ body {
         grid-column: 1 / 3;
         grid-row: auto;
     }
+    .socialcom-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .socialcom-grid .socialcom-outputs-panel {
+        grid-column: 1 / 3;
+    }
 }
 
 @media (max-width: 768px) {
-    .grid, .research-grid, .people-grid {
+    .grid, .research-grid, .people-grid, .socialcom-grid {
         grid-template-columns: 1fr;
     }
     .panel.timeline {
@@ -1007,6 +1155,9 @@ body {
         grid-column: 1;
     }
     .people-grid .people-log-panel {
+        grid-column: 1;
+    }
+    .socialcom-grid .socialcom-outputs-panel {
         grid-column: 1;
     }
     .header {
