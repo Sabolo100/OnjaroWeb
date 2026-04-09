@@ -389,9 +389,11 @@ function switchTab(tabName) {
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === 'tab-' + tabName);
     });
-    // Load research data when switching to research tab
+    // Load data when switching tabs
     if (tabName === 'research') {
         loadResearchData();
+    } else if (tabName === 'people') {
+        loadPeopleResearchData();
     }
 }
 
@@ -701,4 +703,132 @@ async function rejectReview(reviewId) {
         method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
     });
     loadResearchReviews();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PEOPLE RESEARCH TAB
+// ══════════════════════════════════════════════════════════════════════════════
+
+let peopleResearchActive = false;
+
+socket.on('people_research_log', (data) => {
+    peopleResearchActive = true;
+    addPeopleLogLine(data.line, data.channel);
+    // Show activity dot on tab
+    const dot = document.getElementById('people-status-dot');
+    if (dot) { dot.style.display = 'inline-block'; dot.className = 'people-status-dot active'; }
+});
+
+socket.on('people_research_complete', (data) => {
+    peopleResearchActive = false;
+    updatePeopleStatus(data);
+    const dot = document.getElementById('people-status-dot');
+    if (dot) { dot.className = 'people-status-dot done'; }
+});
+
+function addPeopleLogLine(line, channel) {
+    const container = document.getElementById('people-log');
+    if (!container) return;
+    container.querySelector('.empty-state')?.remove();
+
+    const el = document.createElement('div');
+    el.className = 'people-log-line';
+
+    // Color-code by severity
+    let cls = '';
+    if (line.includes('[ERROR]')) cls = 'error';
+    else if (line.includes('[WARNING]')) cls = 'warning';
+    else if (line.includes('persisted') || line.includes('Created') || line.includes('+')) cls = 'success';
+
+    el.innerHTML = `<span class="people-log-text ${cls}">${escapeHtml(line)}</span>`;
+    container.appendChild(el);
+
+    // Auto-scroll to bottom
+    container.scrollTop = container.scrollHeight;
+
+    // Keep last 300 lines
+    while (container.children.length > 300) container.removeChild(container.firstChild);
+
+    // Update status panel
+    updatePeopleStatusFromLog(line);
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+let peopleFoundCount = 0;
+let peopleCompanyCount = 0;
+
+function updatePeopleStatusFromLog(line) {
+    // Parse company progress: [N/M]
+    const companyMatch = line.match(/\[(\d+)\/(\d+)\]/);
+    if (companyMatch) {
+        peopleCompanyCount = parseInt(companyMatch[1]);
+        const total = parseInt(companyMatch[2]);
+        document.getElementById('people-status-content').innerHTML = `
+            <div class="run-info">
+                <div class="run-info-row"><span class="run-info-label">Status</span><span class="run-status running">FUT</span></div>
+                <div class="run-info-row"><span class="run-info-label">Ceg</span><span class="run-info-value">${peopleCompanyCount} / ${total}</span></div>
+                <div class="run-info-row"><span class="run-info-label">Talalatok</span><span class="run-info-value">${peopleFoundCount}</span></div>
+            </div>`;
+    }
+
+    // Count people found
+    const persistMatch = line.match(/(\d+) persisted/);
+    if (persistMatch) {
+        peopleFoundCount += parseInt(persistMatch[1]);
+    }
+    // Also count from + lines (direct persist)
+    if (line.match(/^\d{4}.*\+ /)) {
+        peopleFoundCount++;
+    }
+
+    // Update stats panel
+    document.getElementById('people-stats-content').innerHTML = `
+        <div class="decision-content">
+            <div class="decision-title">People Research</div>
+            <div class="decision-rationale">
+                Feldolgozott cegek: ${peopleCompanyCount}<br>
+                Talalt szemelyek: ${peopleFoundCount}
+            </div>
+        </div>`;
+}
+
+function updatePeopleStatus(data) {
+    const statusEl = document.getElementById('people-status-content');
+    if (!statusEl) return;
+    statusEl.innerHTML = `
+        <div class="run-info">
+            <div class="run-info-row"><span class="run-info-label">Status</span><span class="run-status completed">KESZ</span></div>
+            <div class="run-info-row"><span class="run-info-label">Indult</span><span class="run-info-value">${formatTime(data.started_at)}</span></div>
+            <div class="run-info-row"><span class="run-info-label">Befejezodott</span><span class="run-info-value">${formatTime(data.completed_at)}</span></div>
+            <div class="run-info-row"><span class="run-info-label">Talalatok</span><span class="run-info-value">${peopleFoundCount}</span></div>
+        </div>`;
+}
+
+async function loadPeopleResearchData() {
+    try {
+        const data = await fetch('/api/people-research/status').then(r => r.json());
+        if (data.running) {
+            peopleResearchActive = true;
+            const dot = document.getElementById('people-status-dot');
+            if (dot) { dot.style.display = 'inline-block'; dot.className = 'people-status-dot active'; }
+        }
+        if (data.completed_at) {
+            updatePeopleStatus(data);
+        }
+
+        // Load log lines
+        const log = await fetch('/api/people-research/log').then(r => r.json());
+        if (log && log.length) {
+            const container = document.getElementById('people-log');
+            if (container) {
+                container.innerHTML = '';
+                log.forEach(line => addPeopleLogLine(line, ''));
+            }
+        }
+    } catch(e) {}
 }

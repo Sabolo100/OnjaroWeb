@@ -574,6 +574,8 @@ def main():
                         help="Which channel to use (default: all)")
     parser.add_argument("--skip-existing", action="store_true",
                         help="Skip companies that already have >= 3 people linked")
+    parser.add_argument("--only-new", action="store_true",
+                        help="Only process companies never touched by any channel (not in progress file)")
     args = parser.parse_args()
 
     # ── Setup ──
@@ -623,6 +625,12 @@ def main():
                 people_count[cid] = people_count.get(cid, 0) + 1
         companies = [c for c in companies if people_count.get(c["id"], 0) < 3]
         logger.info("After skip-existing filter: %d companies", len(companies))
+
+    if args.only_new:
+        before = len(companies)
+        companies = [c for c in companies if c["id"] not in progress]
+        logger.info("After only-new filter: %d companies (skipped %d already processed)",
+                    len(companies), before - len(companies))
 
     if args.max > 0:
         companies = companies[:args.max]

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FM Intel - Rendszer Indító</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .launcher {
+            max-width: 720px;
+            margin: 60px auto;
+            padding: 0 24px;
+        }
+
+        .launcher-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .launcher-logo {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            letter-spacing: -0.02em;
+        }
+
+        .launcher-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .launcher-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .launcher-section h2 {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .launcher-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+
+        .launcher-option:hover {
+            background: var(--bg-hover);
+        }
+
+        .launcher-option-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .launcher-option-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .launcher-option-text h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .launcher-option-text p {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin: 2px 0 0;
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg-hover);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 2px;
+            bottom: 2px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: rgba(57,210,192,0.15);
+            border-color: var(--accent-cyan);
+        }
+
+        .toggle input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+            background: var(--accent-cyan);
+        }
+
+        /* Sub-options (indented channels) */
+        .sub-options {
+            margin-left: 48px;
+            padding: 8px 0 4px;
+            display: none;
+        }
+
+        .sub-options.visible {
+            display: block;
+        }
+
+        .sub-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+
+        .sub-option:hover {
+            background: var(--bg-hover);
+        }
+
+        .sub-option input[type="checkbox"] {
+            accent-color: var(--accent-cyan);
+            width: 15px;
+            height: 15px;
+        }
+
+        .sub-option label {
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        /* RUN button */
+        .launcher-run {
+            text-align: center;
+            margin-top: 32px;
+        }
+
+        .btn-run {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 56px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #0d1117;
+            background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-green) 100%);
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.04em;
+        }
+
+        .btn-run:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(57,210,192,0.25);
+        }
+
+        .btn-run:active {
+            transform: translateY(0);
+        }
+
+        .btn-run:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .launcher-hint {
+            text-align: center;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 12px;
+        }
+
+        /* Status message */
+        .launcher-status {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--accent-cyan);
+            margin-top: 16px;
+            display: none;
+        }
+
+        .launcher-status.error {
+            color: var(--accent-red);
+        }
+
+        /* Section indicators */
+        .icon-evolution { background: rgba(88,166,255,0.1); color: var(--accent-blue); }
+        .icon-research { background: rgba(188,140,255,0.1); color: var(--accent-purple); }
+        .icon-people { background: rgba(57,210,192,0.1); color: var(--accent-cyan); }
+    </style>
+</head>
+<body>
+    <div class="launcher">
+        <div class="launcher-header">
+            <div class="launcher-logo">&#9889; FM Intel</div>
+            <div class="launcher-subtitle">Piaci Intelligencia Platform - Rendszer Indító</div>
+        </div>
+
+        <!-- Evolution -->
+        <div class="launcher-section">
+            <h2>&#9881; Evolution Modul</h2>
+            <label class="launcher-option" for="toggle-evolution">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-evolution">&#9881;</div>
+                    <div class="launcher-option-text">
+                        <h3>Automatikus fejlesztés</h3>
+                        <p>AI-vezérelt webapp evolúció (új feature-ök, fejlesztések)</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-evolution">
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+        </div>
+
+        <!-- Research -->
+        <div class="launcher-section">
+            <h2>&#128269; Research Modulok</h2>
+
+            <label class="launcher-option" for="toggle-companies">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-research">&#127970;</div>
+                    <div class="launcher-option-text">
+                        <h3>FM/PM/AM Cégek</h3>
+                        <p>Ingatlankezelő cégek kutatása a magyar piacon</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-companies" checked>
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+
+            <label class="launcher-option" for="toggle-buildings">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-research">&#127963;</div>
+                    <div class="launcher-option-text">
+                        <h3>Épületek, irodaházak</h3>
+                        <p>Kereskedelmi ingatlanok, irodaházak, raktárak kutatása</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-buildings" checked>
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+
+            <label class="launcher-option" for="toggle-personnel">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-research">&#128100;</div>
+                    <div class="launcher-option-text">
+                        <h3>Személyi változások</h3>
+                        <p>Kinevezések, pozícióváltások az FM/PM/AM szektorban</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-personnel" checked>
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+
+            <label class="launcher-option" for="toggle-news">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-research">&#128240;</div>
+                    <div class="launcher-option-text">
+                        <h3>FM/PM Hírek</h3>
+                        <p>Piaci hírek, sajtóközlemények figyelése</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-news" checked>
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+        </div>
+
+        <!-- People Research -->
+        <div class="launcher-section">
+            <h2>&#128101; People Research (dedikált)</h2>
+
+            <label class="launcher-option" for="toggle-people-research" onclick="togglePeopleChannels(event)">
+                <div class="launcher-option-left">
+                    <div class="launcher-option-icon icon-people">&#128101;</div>
+                    <div class="launcher-option-text">
+                        <h3>Szakemberek keresése</h3>
+                        <p>Többcsatornás keresés a cégek kulcsembereiről</p>
+                    </div>
+                </div>
+                <div class="toggle">
+                    <input type="checkbox" id="toggle-people-research">
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+
+            <div class="sub-options" id="people-channels">
+                <div class="sub-option">
+                    <input type="checkbox" id="ch-website" checked>
+                    <label for="ch-website">Cégek weboldalai (vezetőség, csapat oldal)</label>
+                </div>
+                <div class="sub-option">
+                    <input type="checkbox" id="ch-search" checked>
+                    <label for="ch-search">Perplexity keresés (LinkedIn, hírek, cégadatok)</label>
+                </div>
+                <div class="sub-option">
+                    <input type="checkbox" id="ch-conference" checked>
+                    <label for="ch-conference">Konferencia előadók (FM/PM/AM rendezvények)</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- RUN -->
+        <div class="launcher-run">
+            <button class="btn-run" id="btn-run" onclick="launchSystem()">
+                &#9654; RUN
+            </button>
+            <div class="launcher-hint">A kiválasztott modulok elindulnak. A dashboard-on követheted a folyamatot.</div>
+            <div class="launcher-status" id="launcher-status"></div>
+        </div>
+    </div>
+
+    <script>
+        function togglePeopleChannels(e) {
+            // Don't interfere with the toggle checkbox
+            const channels = document.getElementById('people-channels');
+            const toggle = document.getElementById('toggle-people-research');
+            // Use setTimeout to read after the checkbox state has changed
+            setTimeout(() => {
+                channels.classList.toggle('visible', toggle.checked);
+            }, 10);
+        }
+
+        // Also listen for direct checkbox change
+        document.getElementById('toggle-people-research').addEventListener('change', function() {
+            document.getElementById('people-channels').classList.toggle('visible', this.checked);
+        });
+
+        async function launchSystem() {
+            const btn = document.getElementById('btn-run');
+            const status = document.getElementById('launcher-status');
+            btn.disabled = true;
+            btn.innerHTML = '&#9203; Indítás...';
+            status.style.display = 'block';
+            status.className = 'launcher-status';
+            status.textContent = 'Modulok indítása...';
+
+            const config = {
+                evolution_enabled: document.getElementById('toggle-evolution').checked,
+                research_items: {
+                    fm_pm_am_companies_hu: document.getElementById('toggle-companies').checked,
+                    buildings_offices_hu: document.getElementById('toggle-buildings').checked,
+                    personnel_movements_hu: document.getElementById('toggle-personnel').checked,
+                    fm_pm_news_hu: document.getElementById('toggle-news').checked,
+                },
+                people_research: {
+                    enabled: document.getElementById('toggle-people-research').checked,
+                    channels: {
+                        website: document.getElementById('ch-website').checked,
+                        search: document.getElementById('ch-search').checked,
+                        conference: document.getElementById('ch-conference').checked,
+                    },
+                },
+            };
+
+            try {
+                const resp = await fetch('/api/launch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config),
+                });
+                const data = await resp.json();
+
+                if (data.status === 'ok') {
+                    status.textContent = 'Modulok elindultak! Átirányítás...';
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 800);
+                } else {
+                    status.className = 'launcher-status error';
+                    status.textContent = 'Hiba: ' + (data.error || 'Ismeretlen hiba');
+                    btn.disabled = false;
+                    btn.innerHTML = '&#9654; RUN';
+                }
+            } catch (e) {
+                status.className = 'launcher-status error';
+                status.textContent = 'Kapcsolati hiba: ' + e.message;
+                btn.disabled = false;
+                btn.innerHTML = '&#9654; RUN';
+            }
+        }
+    </script>
+</body>
+</html>

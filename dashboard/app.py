@@ -1,5 +1,6 @@
 """Activity Dashboard - Flask + Socket.IO real-time monitoring."""
 
+import threading
 from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
@@ -12,6 +13,18 @@ from db.research_repository import ResearchRepository
 # Shared state: next scheduled run time (set by main.py)
 next_run_at = None
 session_started_at = datetime.now(timezone.utc)
+
+# Launch config set by the launcher page (None = not yet launched)
+launch_config = None
+
+# People research state tracking
+people_research_status = {
+    "running": False,
+    "log": [],          # recent log lines
+    "stats": {},        # per-channel stats
+    "started_at": None,
+    "completed_at": None,
+}
 
 
 def set_next_run_at(dt: datetime):
@@ -91,6 +104,8 @@ def _force_persist_candidate(review_id: int,
 
 def create_app(event_bus: EventBus = None, repo: Repository = None,
                research_repo: ResearchRepository = None):
+    global launch_config, people_research_status
+
     app = Flask(__name__)
     app.config["SECRET_KEY"] = "onjaro-evolution-dashboard"
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
@@ -102,7 +117,64 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
 
     @app.route("/")
     def index():
+        # If not yet launched, show launcher page
+        if launch_config is None:
+            return render_template("launcher.html")
         return render_template("index.html")
+
+    @app.route("/dashboard")
+    def dashboard_page():
+        return render_template("index.html")
+
+    @app.route("/launcher")
+    def launcher_page():
+        return render_template("launcher.html")
+
+    # ── Launch API ──
+
+    @app.route("/api/launch", methods=["POST"])
+    def api_launch():
+        global launch_config, people_research_status
+        import logging
+        logger = logging.getLogger("onjaro.dashboard")
+
+        config = request.json or {}
+        launch_config = config
+        logger.info("Launch config received: %s", config)
+
+        # Start people research in background if enabled
+        pr_config = config.get("people_research", {})
+        if pr_config.get("enabled"):
+            channels = pr_config.get("channels", {})
+            active_channels = [ch for ch, on in channels.items() if on]
+            if active_channels:
+                people_research_status = {
+                    "running": True,
+                    "log": [],
+                    "stats": {ch: 0 for ch in active_channels},
+                    "started_at": datetime.now(timezone.utc).isoformat(),
+                    "completed_at": None,
+                    "channels": active_channels,
+                }
+                t = threading.Thread(
+                    target=_run_people_research,
+                    args=(active_channels, socketio),
+                    daemon=True,
+                )
+                t.start()
+                logger.info("People research started in background: channels=%s", active_channels)
+
+        return jsonify({"status": "ok", "config": config})
+
+    # ── People Research API ──
+
+    @app.route("/api/people-research/status")
+    def api_people_research_status():
+        return jsonify(people_research_status)
+
+    @app.route("/api/people-research/log")
+    def api_people_research_log():
+        return jsonify(people_research_status.get("log", [])[-100:])
 
     # ── Evolution API ──
 
@@ -256,3 +328,89 @@ def create_app(event_bus: EventBus = None, repo: Repository = None,
                         socketio.emit("research_timeline_history", events)
 
     return app, socketio
+
+
+def get_launch_config():
+    """Return the current launch config (used by orchestrator/main.py)."""
+    return launch_config
+
+
+def _run_people_research(channels, socketio):
+    """Run research_people.py channels in background thread."""
+    global people_research_status
+    import subprocess
+    import sys
+    import os
+    import logging
+
+    logger = logging.getLogger("onjaro.dashboard.people_research")
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    # Build channel arg
+    if set(channels) == {"website", "search", "conference"}:
+        channel_arg = "all"
+    elif len(channels) == 1:
+        channel_arg = channels[0]
+    else:
+        # Run multiple channels sequentially
+        for ch in channels:
+            _run_single_people_channel(ch, project_root, socketio, logger)
+        people_research_status["running"] = False
+        people_research_status["completed_at"] = datetime.now(timezone.utc).isoformat()
+        socketio.emit("people_research_complete", people_research_status)
+        return
+
+    _run_single_people_channel(channel_arg, project_root, socketio, logger)
+    people_research_status["running"] = False
+    people_research_status["completed_at"] = datetime.now(timezone.utc).isoformat()
+    socketio.emit("people_research_complete", people_research_status)
+
+
+def _run_single_people_channel(channel, project_root, socketio, logger):
+    """Run a single people research channel via subprocess."""
+    global people_research_status
+    import subprocess
+    import sys
+    import os
+
+    script = os.path.join(project_root, "scripts", "research_people.py")
+    env = os.environ.copy()
+    env["PYTHONPATH"] = project_root + ":" + env.get("PYTHONPATH", "")
+
+    cmd = [sys.executable, script, "--channel", channel]
+    logger.info("Running people research: %s", " ".join(cmd))
+
+    try:
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=env, cwd=project_root, text=True, bufsize=1,
+        )
+
+        for line in proc.stdout:
+            line = line.rstrip()
+            if not line:
+                continue
+            # Store in log buffer (keep last 500 lines)
+            people_research_status["log"].append(line)
+            if len(people_research_status["log"]) > 500:
+                people_research_status["log"] = people_research_status["log"][-500:]
+
+            # Parse stats from log lines
+            if "people found" in line.lower() or "persisted" in line.lower():
+                people_research_status["stats"][channel] = \
+                    people_research_status["stats"].get(channel, 0) + 1
+
+            # Emit to dashboard via socket.io
+            socketio.emit("people_research_log", {
+                "line": line,
+                "channel": channel,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+
+        proc.wait()
+        logger.info("People research channel '%s' finished with code %d", channel, proc.returncode)
+
+    except Exception as e:
+        error_msg = f"People research channel '{channel}' failed: {e}"
+        logger.error(error_msg)
+        people_research_status["log"].append(error_msg)

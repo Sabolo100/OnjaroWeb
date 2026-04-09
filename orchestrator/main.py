@@ -224,14 +224,52 @@ def start_dashboard():
         logger.error("Dashboard failed to start: %s", e)
 
 
+def _wait_for_launch_config():
+    """Wait for the launcher page to submit config via /api/launch.
+
+    Returns the launch config dict, or None if not using the launcher.
+    """
+    from dashboard.app import get_launch_config
+    import time as _time
+
+    logger.info("Launcher page active at http://localhost:%d — waiting for RUN...",
+                DASHBOARD_PORT)
+
+    while True:
+        cfg = get_launch_config()
+        if cfg is not None:
+            return cfg
+        _time.sleep(0.5)
+
+
+def _apply_research_item_config(item_config):
+    """Temporarily patch items.yaml 'enabled' flags based on launcher selection.
+
+    This modifies the in-memory config_loader so that disabled items are
+    skipped by the research run manager.
+    """
+    if not item_config:
+        return
+
+    try:
+        from research.config_loader import ProjectConfig
+        config = ProjectConfig()
+        items = config.load_items()
+        for item in items:
+            item_id = item.get("id", "")
+            if item_id in item_config:
+                item["enabled"] = item_config[item_id]
+        logger.info("Research items configured: %s",
+                    {i["id"]: i.get("enabled", True) for i in items})
+    except Exception as e:
+        logger.warning("Failed to apply research item config: %s", e)
+
+
 def main():
     """Main entry point."""
     logger.info("=" * 60)
-    logger.info("Autonomous Evolution System starting")
+    logger.info("FM Intel - Piaci Intelligencia Platform")
     logger.info("Project root: %s", PROJECT_ROOT)
-    logger.info("Evolution module: %s", "ENABLED" if EVOLUTION_ENABLED else "DISABLED")
-    logger.info("Research module:  %s", "ENABLED" if RESEARCH_ENABLED else "DISABLED")
-    logger.info("Run on startup:   %s", "YES" if RUN_ON_STARTUP else "NO")
     logger.info("=" * 60)
 
     # Initialize database
@@ -248,21 +286,49 @@ def main():
     if stale_research:
         logger.info("Cancelled %d stale research run(s) from previous session", stale_research)
 
-    # Initialize research pipeline
-    if RESEARCH_ENABLED:
-        _init_research_pipeline()
-
     # Subscribe event bus to DB logger
     event_bus.subscribe(db_event_logger)
 
-    # Start dashboard in background thread
+    # Start dashboard in background thread (serves launcher page first)
     dashboard_thread = threading.Thread(target=start_dashboard, daemon=True)
     dashboard_thread.start()
-    logger.info("Dashboard thread started")
+    logger.info("Dashboard thread started — launcher at http://localhost:%d", DASHBOARD_PORT)
+
+    # Wait for launcher config (or use .env defaults if RUN_ON_STARTUP=1)
+    evo_enabled = EVOLUTION_ENABLED
+    res_enabled = RESEARCH_ENABLED
+
+    if RUN_ON_STARTUP:
+        # Legacy mode: skip launcher, use .env settings directly
+        logger.info("RUN_ON_STARTUP=1 — skipping launcher, using .env config")
+        logger.info("Evolution: %s, Research: %s", "ON" if evo_enabled else "OFF",
+                    "ON" if res_enabled else "OFF")
+    else:
+        # New flow: wait for launcher page to submit config
+        cfg = _wait_for_launch_config()
+        logger.info("Launch config received from launcher UI")
+
+        evo_enabled = cfg.get("evolution_enabled", False)
+        # Research is enabled if any research item is turned on
+        research_items = cfg.get("research_items", {})
+        res_enabled = any(research_items.values())
+
+        # Apply per-item enabled/disabled flags
+        if res_enabled:
+            _apply_research_item_config(research_items)
+
+        logger.info("Evolution: %s, Research: %s (items: %s)",
+                    "ON" if evo_enabled else "OFF",
+                    "ON" if res_enabled else "OFF",
+                    research_items)
+
+    # Initialize research pipeline
+    if res_enabled:
+        _init_research_pipeline()
 
     # Setup scheduler — use UTC timezone to avoid DST clock-jump missed runs
     scheduler = BackgroundScheduler(timezone="UTC")
-    if EVOLUTION_ENABLED:
+    if evo_enabled:
         scheduler.add_job(
             run_cycle,
             "interval",
@@ -271,7 +337,7 @@ def main():
             id="evolution_cycle",
         )
         logger.info("Evolution scheduler: every %d min", RUN_INTERVAL_MINUTES)
-    if RESEARCH_ENABLED:
+    if res_enabled:
         scheduler.add_job(
             research_cycle,
             "interval",
@@ -282,12 +348,12 @@ def main():
         logger.info("Research scheduler: every %d min", RESEARCH_RUN_INTERVAL_MINUTES)
     scheduler.start()
 
-    # Run immediately on start (only if enabled)
-    if RUN_ON_STARTUP and EVOLUTION_ENABLED:
-        logger.info("Running initial evolution cycle (RUN_ON_STARTUP=1)...")
+    # Run first cycle immediately
+    if evo_enabled:
+        logger.info("Running initial evolution cycle...")
         run_cycle()
-    if RUN_ON_STARTUP and RESEARCH_ENABLED:
-        logger.info("Running initial research cycle (RUN_ON_STARTUP=1)...")
+    if res_enabled:
+        logger.info("Running initial research cycle...")
         threading.Thread(target=research_cycle, daemon=True).start()
 
     # Handle graceful shutdown
